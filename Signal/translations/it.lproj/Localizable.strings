@@ -311,8 +311,14 @@
 /* Label for generic done button. */
 "BUTTON_DONE" = "Fatto";
 
+/* Label for redo button. */
+"BUTTON_REDO" = "Ripeti";
+
 /* Button text to enable batch selection mode */
 "BUTTON_SELECT" = "Seleziona";
+
+/* Label for undo button. */
+"BUTTON_UNDO" = "Annulla";
 
 /* Label for button that lets users call a contact again. */
 "CALL_AGAIN_BUTTON_TITLE" = "Richiama";
@@ -1074,6 +1080,18 @@
 /* Title for the home view's default mode. */
 "HOME_VIEW_TITLE_INBOX" = "Signal";
 
+/* Label for brush button in image editor. */
+"IMAGE_EDITOR_BRUSH_BUTTON" = "Pennello";
+
+/* Label for crop button in image editor. */
+"IMAGE_EDITOR_CROP_BUTTON" = "Ritaglia";
+
+/* Momentarily shown to the user when attempting to select more images than is allowed. Embeds {{max number of items}} that can be shared. */
+"IMAGE_PICKER_CAN_SELECT_NO_MORE_TOAST_FORMAT" = "Non puoi condividere più di %@ elementi.";
+
+/* alert title */
+"IMAGE_PICKER_FAILED_TO_PROCESS_ATTACHMENTS" = "Selezione allegato fallita";
+
 /* Call setup status label */
 "IN_CALL_CONNECTING" = "Connessione...";
 
@@ -1166,6 +1184,9 @@
 
 /* Navigation title when scanning QR code to add new device. */
 "LINK_NEW_DEVICE_TITLE" = "Associa nuovo dispositivo";
+
+/* Label for link previews with an unknown host. */
+"LINK_PREVIEW_UNKNOWN_DOMAIN" = "Link Preview";
 
 /* Menu item and navbar title for the device manager */
 "LINKED_DEVICES_TITLE" = "Dispositivi associati";
@@ -1453,6 +1474,9 @@
 
 /* Label for a button that lets users search for contacts by phone number */
 "NO_CONTACTS_SEARCH_BY_PHONE_NUMBER" = "Trova contatti tramite numero di telefono";
+
+/* Label for 1:1 conversation with yourself. */
+"NOTE_TO_SELF" = "Note personali";
 
 /* Lock screen notification text presented after user powers on their device without unlocking. Embeds {{device model}} (either 'iPad' or 'iPhone') */
 "NOTIFICATION_BODY_PHONE_LOCKED_FORMAT" = "Puoi aver ricevuto messaggi mentre il tuo %@ si riavviava.";
@@ -2066,6 +2090,15 @@
 /* table cell label */
 "SETTINGS_LEGAL_TERMS_CELL" = "Politica e termini sulla privacy";
 
+/* Setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS" = "Send Link Previews";
+
+/* Footer for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_FOOTER" = "Previews are supported for Imgur, Instagram, Reddit, and YouTube links.";
+
+/* Header for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_HEADER" = "Link Previews";
+
 /* Title for settings activity */
 "SETTINGS_NAV_BAR_TITLE" = "Impostazioni";
 
@@ -2342,6 +2375,15 @@
 /* button label shown one time, after upgrade */
 "UPGRADE_EXPERIENCE_ENABLE_TYPING_INDICATOR_BUTTON" = "Attiva gli indicatori di scrittura";
 
+/* Body text for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_DESCRIPTION" = "Optional link previews are now supported for some of the most popular sites on the Internet.";
+
+/* Subtitle for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_SUBTITLE" = "You can disable or enable this feature anytime in your Signal settings (Privacy > Send link previews).";
+
+/* Header for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_TITLE" = "Link Previews";
+
 /* Description for notification audio customization */
 "UPGRADE_EXPERIENCE_INTRODUCING_NOTIFICATION_AUDIO_DESCRIPTION" = "Ora puoi scegliere i suoni di notifica predefiniti e per conversazione, le chiamate rispetteranno la suoneria di sistema scelta per ogni contatto. ";
 
@@ -2386,9 +2428,6 @@
 
 /* Title for the alert indicating that user should upgrade iOS. */
 "UPGRADE_IOS_ALERT_TITLE" = "Aggiornare iOS";
-
-/* No comment provided by engineer. */
-"Upgrading Signal ..." = "Aggiornamento di Signal in corso...";
 
 /* button text for back button on verification view */
 "VERIFICATION_BACK_BUTTON" = "Indietro";

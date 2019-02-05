@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSOutgoingNullMessage.h"
@@ -24,6 +24,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithContactThread:(TSContactThread *)contactThread
          verificationStateSyncMessage:(OWSVerificationStateSyncMessage *)verificationStateSyncMessage
 {
+    // MJK TODO - remove senderTimestamp
     self = [super initOutgoingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                           inThread:contactThread
                                        messageBody:nil
@@ -33,7 +34,8 @@ NS_ASSUME_NONNULL_BEGIN
                                     isVoiceMessage:NO
                                   groupMetaMessage:TSGroupMetaMessageUnspecified
                                      quotedMessage:nil
-                                      contactShare:nil];
+                                      contactShare:nil
+                                       linkPreview:nil];
     if (!self) {
         return self;
     }

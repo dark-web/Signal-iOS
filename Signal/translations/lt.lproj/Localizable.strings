@@ -311,8 +311,14 @@
 /* Label for generic done button. */
 "BUTTON_DONE" = "Atlikta";
 
+/* Label for redo button. */
+"BUTTON_REDO" = "Grąžinti";
+
 /* Button text to enable batch selection mode */
 "BUTTON_SELECT" = "Pasirinkti";
+
+/* Label for undo button. */
+"BUTTON_UNDO" = "Atšaukti";
 
 /* Label for button that lets users call a contact again. */
 "CALL_AGAIN_BUTTON_TITLE" = "Skambinti vėl";
@@ -1074,6 +1080,18 @@
 /* Title for the home view's default mode. */
 "HOME_VIEW_TITLE_INBOX" = "Signal";
 
+/* Label for brush button in image editor. */
+"IMAGE_EDITOR_BRUSH_BUTTON" = "Teptukas";
+
+/* Label for crop button in image editor. */
+"IMAGE_EDITOR_CROP_BUTTON" = "Apkirpti";
+
+/* Momentarily shown to the user when attempting to select more images than is allowed. Embeds {{max number of items}} that can be shared. */
+"IMAGE_PICKER_CAN_SELECT_NO_MORE_TOAST_FORMAT" = "Negalite dalintis daugiau nei %@ elementais.";
+
+/* alert title */
+"IMAGE_PICKER_FAILED_TO_PROCESS_ATTACHMENTS" = "Nepavyko pasirinkti priedo.";
+
 /* Call setup status label */
 "IN_CALL_CONNECTING" = "Jungiamasi…";
 
@@ -1166,6 +1184,9 @@
 
 /* Navigation title when scanning QR code to add new device. */
 "LINK_NEW_DEVICE_TITLE" = "Susieti naują įrenginį";
+
+/* Label for link previews with an unknown host. */
+"LINK_PREVIEW_UNKNOWN_DOMAIN" = "Nuorodos peržiūra";
 
 /* Menu item and navbar title for the device manager */
 "LINKED_DEVICES_TITLE" = "Susieti įrenginiai";
@@ -1453,6 +1474,9 @@
 
 /* Label for a button that lets users search for contacts by phone number */
 "NO_CONTACTS_SEARCH_BY_PHONE_NUMBER" = "Rasti kontaktus pagal telefono numerį";
+
+/* Label for 1:1 conversation with yourself. */
+"NOTE_TO_SELF" = "Pastabos sau";
 
 /* Lock screen notification text presented after user powers on their device without unlocking. Embeds {{device model}} (either 'iPad' or 'iPhone') */
 "NOTIFICATION_BODY_PHONE_LOCKED_FORMAT" = "Gali būti, kad kol jūsų %@ buvo paleidžiamas iš naujo, jūs gavote žinutes.";
@@ -2066,6 +2090,15 @@
 /* table cell label */
 "SETTINGS_LEGAL_TERMS_CELL" = "Sąlygos ir Privatumo politika";
 
+/* Setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS" = "Siųsti nuorodų peržiūras";
+
+/* Footer for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_FOOTER" = "Peržiūros yra palaikomos Imgur, Instagram, Reddit, ir YouTube nuorodoms.";
+
+/* Header for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_HEADER" = "Nuorodų peržiūros";
+
 /* Title for settings activity */
 "SETTINGS_NAV_BAR_TITLE" = "Nustatymai";
 
@@ -2342,6 +2375,15 @@
 /* button label shown one time, after upgrade */
 "UPGRADE_EXPERIENCE_ENABLE_TYPING_INDICATOR_BUTTON" = "Įjungti rašymo indikatorius";
 
+/* Body text for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_DESCRIPTION" = "Optional link previews are now supported for some of the most popular sites on the Internet.";
+
+/* Subtitle for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_SUBTITLE" = "You can disable or enable this feature anytime in your Signal settings (Privacy > Send link previews).";
+
+/* Header for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_TITLE" = "Nuorodų peržiūros";
+
 /* Description for notification audio customization */
 "UPGRADE_EXPERIENCE_INTRODUCING_NOTIFICATION_AUDIO_DESCRIPTION" = "Dabar, galite pasirinkti numatytuosius bei kiekvieno atskiro pokalbio pranešimų garsus, o skambučiai taikys kiekvienam jūsų sistemos kontaktui pasirinktą skambučio melodiją.";
 
@@ -2386,9 +2428,6 @@
 
 /* Title for the alert indicating that user should upgrade iOS. */
 "UPGRADE_IOS_ALERT_TITLE" = "Atnaujinkite iOS";
-
-/* No comment provided by engineer. */
-"Upgrading Signal ..." = "Naujinama Signal…";
 
 /* button text for back button on verification view */
 "VERIFICATION_BACK_BUTTON" = "Atgal";

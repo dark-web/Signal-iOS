@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import Foundation
@@ -8,7 +8,7 @@ import SignalMessaging
 
 class DebugUIProfile: DebugUIPage {
 
-    // MARK: Dependencies
+    // MARK: - Dependencies
 
     var messageSender: MessageSender {
         return SSKEnvironment.shared.messageSender
@@ -17,7 +17,7 @@ class DebugUIProfile: DebugUIPage {
         return OWSProfileManager.shared()
     }
 
-    // MARK: Overrides
+    // MARK: - Overrides
 
     override func name() -> String {
         return "Profile"
@@ -46,6 +46,7 @@ class DebugUIProfile: DebugUIPage {
             OWSTableItem(title: "Send Profile Key Message") { [weak self] in
                 guard let strongSelf = self else { return }
 
+                // MJK TODO - should be safe to remove this senderTimestamp
                 let message = OWSProfileKeyMessage(timestamp: NSDate.ows_millisecondTimeStamp(), in: aThread)
                 strongSelf.messageSender.sendPromise(message: message).done {
                     Logger.info("Successfully sent profile key message to thread: \(String(describing: aThread))")

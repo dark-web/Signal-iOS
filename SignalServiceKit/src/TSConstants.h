@@ -1,6 +1,8 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
+
+NS_ASSUME_NONNULL_BEGIN
 
 #ifndef TextSecureKit_Constants_h
 #define TextSecureKit_Constants_h
@@ -19,7 +21,6 @@ typedef NS_ENUM(NSInteger, TSWhisperMessageType) {
 #define textSecureHTTPTimeOut 10
 
 #define kLegalTermsUrlString @"https://signal.org/legal/"
-#define SHOW_LEGAL_TERMS_LINK
 
 //#ifndef DEBUG
 
@@ -68,3 +69,5 @@ BOOL IsUsingProductionService(void);
 #define SignalApplicationGroup @"group.org.whispersystems.signal.group"
 
 #endif
+
+NS_ASSUME_NONNULL_END

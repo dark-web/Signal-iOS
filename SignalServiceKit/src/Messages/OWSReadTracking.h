@@ -1,6 +1,8 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
+
+NS_ASSUME_NONNULL_BEGIN
 
 @class YapDatabaseReadWriteTransaction;
 
@@ -16,7 +18,7 @@
 @property (nonatomic, readonly, getter=wasRead) BOOL read;
 
 @property (nonatomic, readonly) uint64_t expireStartedAt;
-@property (nonatomic, readonly) uint64_t timestampForSorting;
+@property (nonatomic, readonly) uint64_t sortId;
 @property (nonatomic, readonly) NSString *uniqueThreadId;
 
 
@@ -30,3 +32,5 @@
                   transaction:(YapDatabaseReadWriteTransaction *)transaction;
 
 @end
+
+NS_ASSUME_NONNULL_END

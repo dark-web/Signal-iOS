@@ -1,16 +1,16 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "PrivacySettingsTableViewController.h"
 #import "BlockListViewController.h"
 #import "OWS2FASettingsViewController.h"
 #import "Signal-Swift.h"
-#import <SignalCoreKit/NSString+SSK.h>
 #import <SignalMessaging/Environment.h>
 #import <SignalMessaging/OWSPreferences.h>
 #import <SignalMessaging/ThreadUtil.h>
 #import <SignalMessaging/UIColor+OWS.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/OWS2FAManager.h>
 #import <SignalServiceKit/OWSReadReceiptManager.h>
 #import <SignalServiceKit/SignalServiceKit-Swift.h>
@@ -309,6 +309,19 @@ static NSString *const kSealedSenderInfoURL = @"https://signal.org/blog/sealed-s
                                          }]];
     [contents addSection:unidentifiedDeliveryLearnMoreSection];
 
+    OWSTableSection *linkPreviewsSection = [OWSTableSection new];
+    [linkPreviewsSection
+        addItem:[OWSTableItem switchItemWithText:NSLocalizedString(@"SETTINGS_LINK_PREVIEWS",
+                                                     @"Setting for enabling & disabling link previews.")
+                                            isOn:SSKPreferences.areLinkPreviewsEnabled
+                                          target:weakSelf
+                                        selector:@selector(didToggleLinkPreviewsEnabled:)]];
+    linkPreviewsSection.headerTitle = NSLocalizedString(
+        @"SETTINGS_LINK_PREVIEWS_HEADER", @"Header for setting for enabling & disabling link previews.");
+    linkPreviewsSection.footerTitle = NSLocalizedString(
+        @"SETTINGS_LINK_PREVIEWS_FOOTER", @"Footer for setting for enabling & disabling link previews.");
+    [contents addSection:linkPreviewsSection];
+
     self.contents = contents;
 }
 
@@ -415,6 +428,12 @@ static NSString *const kSealedSenderInfoURL = @"https://signal.org/blog/sealed-s
 {
     OWSLogInfo(@"toggled to: %@", (sender.isOn ? @"ON" : @"OFF"));
     [self.preferences setShouldShowUnidentifiedDeliveryIndicators:sender.isOn];
+}
+
+- (void)didToggleLinkPreviewsEnabled:(UISwitch *)sender
+{
+    OWSLogInfo(@"toggled to: %@", (sender.isOn ? @"ON" : @"OFF"));
+    [SSKPreferences setAreLinkPreviewsEnabledWithValue:sender.isOn];
 }
 
 - (void)show2FASettings

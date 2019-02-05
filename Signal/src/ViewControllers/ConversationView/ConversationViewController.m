@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "ConversationViewController.h"
@@ -50,7 +50,6 @@
 #import <SignalCoreKit/NSDate+OWS.h>
 #import <SignalCoreKit/Threading.h>
 #import <SignalMessaging/Environment.h>
-#import <SignalMessaging/NSString+OWS.h>
 #import <SignalMessaging/OWSContactOffersInteraction.h>
 #import <SignalMessaging/OWSContactsManager.h>
 #import <SignalMessaging/OWSFormat.h>
@@ -64,6 +63,7 @@
 #import <SignalServiceKit/Contact.h>
 #import <SignalServiceKit/ContactsUpdater.h>
 #import <SignalServiceKit/MimeTypeUtil.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/NSTimer+OWS.h>
 #import <SignalServiceKit/OWSAddToContactsOfferMessage.h>
 #import <SignalServiceKit/OWSAddToProfileWhitelistOfferMessage.h>
@@ -100,6 +100,11 @@ typedef enum : NSUInteger {
     kMediaTypePicture,
     kMediaTypeVideo,
 } kMediaTypes;
+
+typedef enum : NSUInteger {
+    kScrollContinuityBottom = 0,
+    kScrollContinuityTop,
+} ScrollContinuity;
 
 #pragma mark -
 
@@ -170,7 +175,7 @@ typedef enum : NSUInteger {
 
 @property (nonatomic) BOOL showLoadMoreHeader;
 @property (nonatomic) UILabel *loadMoreHeader;
-@property (nonatomic) uint64_t lastVisibleTimestamp;
+@property (nonatomic) uint64_t lastVisibleSortId;
 
 @property (nonatomic) BOOL isUserScrolling;
 
@@ -196,6 +201,9 @@ typedef enum : NSUInteger {
 @property (nonatomic, nullable) NSDate *lastReloadDate;
 
 @property (nonatomic) CGFloat scrollDistanceToBottomSnapshot;
+@property (nonatomic, nullable) NSNumber *lastKnownDistanceFromBottom;
+@property (nonatomic) ScrollContinuity scrollContinuity;
+@property (nonatomic, nullable) NSTimer *autoLoadMoreTimer;
 
 @end
 
@@ -238,6 +246,8 @@ typedef enum : NSUInteger {
 
     NSString *audioActivityDescription = [NSString stringWithFormat:@"%@ voice note", self.logTag];
     _recordVoiceNoteAudioActivity = [[OWSAudioActivity alloc] initWithAudioDescription:audioActivityDescription behavior:OWSAudioBehavior_PlayAndRecord];
+
+    self.scrollContinuity = kScrollContinuityBottom;
 }
 
 #pragma mark - Dependencies
@@ -302,6 +312,13 @@ typedef enum : NSUInteger {
     return SSKEnvironment.shared.attachmentDownloads;
 }
 
+- (TSAccountManager *)tsAccountManager
+{
+    OWSAssertDebug(SSKEnvironment.shared.tsAccountManager);
+
+    return SSKEnvironment.shared.tsAccountManager;
+}
+
 #pragma mark -
 
 - (void)addNotificationListeners
@@ -350,9 +367,30 @@ typedef enum : NSUInteger {
                                              selector:@selector(profileWhitelistDidChange:)
                                                  name:kNSNotificationName_ProfileWhitelistDidChange
                                                object:nil];
+    // Keyboard events.
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillShow:)
+                                                 name:UIKeyboardWillShowNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardDidShow:)
+                                                 name:UIKeyboardDidShowNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillHide:)
+                                                 name:UIKeyboardWillHideNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardDidHide:)
+                                                 name:UIKeyboardDidHideNotification
+                                               object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(keyboardWillChangeFrame:)
                                                  name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardDidChangeFrame:)
+                                                 name:UIKeyboardDidChangeFrameNotification
                                                object:nil];
 }
 
@@ -459,6 +497,7 @@ typedef enum : NSUInteger {
 - (void)dealloc
 {
     [self.reloadTimer invalidate];
+    [self.autoLoadMoreTimer invalidate];
 }
 
 - (void)reloadTimerDidFire
@@ -490,7 +529,7 @@ typedef enum : NSUInteger {
     }
 
     TSGroupThread *groupThread = (TSGroupThread *)self.thread;
-    return ![groupThread.groupModel.groupMemberIds containsObject:[TSAccountManager localNumber]];
+    return !groupThread.isLocalUserInGroup;
 }
 
 - (void)hideInputIfNeeded
@@ -545,6 +584,9 @@ typedef enum : NSUInteger {
     self.layout.delegate = self;
     // We use the root view bounds as the initial frame for the collection
     // view so that its contents can be laid out immediately.
+    //
+    // TODO: To avoid relayout, it'd be better to take into account safeAreaInsets,
+    //       but they're not yet set when this method is called.
     _collectionView =
         [[ConversationCollectionView alloc] initWithFrame:self.view.bounds collectionViewLayout:self.layout];
     self.collectionView.layoutDelegate = self;
@@ -553,8 +595,16 @@ typedef enum : NSUInteger {
     self.collectionView.showsVerticalScrollIndicator = YES;
     self.collectionView.showsHorizontalScrollIndicator = NO;
     self.collectionView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    if (@available(iOS 10, *)) {
+        // To minimize time to initial apearance, we initially disable prefetching, but then
+        // re-enable it once the view has appeared.
+        self.collectionView.prefetchingEnabled = NO;
+    }
     [self.view addSubview:self.collectionView];
-    [self.collectionView autoPinEdgesToSuperviewEdges];
+    [self.collectionView autoPinEdgeToSuperviewEdge:ALEdgeTop];
+    [self.collectionView autoPinEdgeToSuperviewEdge:ALEdgeBottom];
+    [self.collectionView autoPinEdgeToSuperviewSafeArea:ALEdgeLeading];
+    [self.collectionView autoPinEdgeToSuperviewSafeArea:ALEdgeTrailing];
 
     [self.collectionView applyScrollViewInsetsFix];
 
@@ -691,12 +741,13 @@ typedef enum : NSUInteger {
         [self scrollToDefaultPosition];
     }
 
-    [self updateLastVisibleTimestamp];
+    [self updateLastVisibleSortId];
 
     if (!self.viewHasEverAppeared) {
         NSTimeInterval appearenceDuration = CACurrentMediaTime() - self.viewControllerCreatedAt;
         OWSLogVerbose(@"First viewWillAppear took: %.2fms", appearenceDuration * 1000);
     }
+    [self updateInputToolbarLayout];
 }
 
 - (NSArray<id<ConversationViewItem>> *)viewItems
@@ -791,11 +842,17 @@ typedef enum : NSUInteger {
 
 - (void)resetContentAndLayout
 {
+    self.scrollContinuity = kScrollContinuityBottom;
     // Avoid layout corrupt issues and out-of-date message subtitles.
     self.lastReloadDate = [NSDate new];
     [self.conversationViewModel viewDidResetContentAndLayout];
     [self.collectionView.collectionViewLayout invalidateLayout];
     [self.collectionView reloadData];
+
+    if (self.viewHasEverAppeared) {
+        // Try to update the lastKnownDistanceFromBottom; the content size may have changed.
+        [self updateLastKnownDistanceFromBottom];
+    }
 }
 
 - (void)setUserHasScrolled:(BOOL)userHasScrolled
@@ -946,7 +1003,8 @@ typedef enum : NSUInteger {
         = (labelDesiredWidth + kBannerHPadding + kBannerHSpacing + closeIcon.size.width + kBannerCloseButtonPadding);
     const CGFloat kMinBannerHMargin = 20.f;
     if (bannerDesiredWidth + kMinBannerHMargin * 2.f >= self.view.width) {
-        [bannerView autoPinWidthToSuperviewWithMargin:kMinBannerHMargin];
+        [bannerView autoPinEdgeToSuperviewSafeArea:ALEdgeLeading withInset:kMinBannerHMargin];
+        [bannerView autoPinEdgeToSuperviewSafeArea:ALEdgeTrailing withInset:kMinBannerHMargin];
     }
 
     [self.view layoutSubviews];
@@ -1115,12 +1173,23 @@ typedef enum : NSUInteger {
 {
     [super viewDidAppear:animated];
 
+    // recover status bar when returning from PhotoPicker, which is dark (uses light status bar)
+    [self setNeedsStatusBarAppearanceUpdate];
+
     [ProfileFetcherJob runWithThread:self.thread];
     [self markVisibleMessagesAsRead];
     [self startReadTimer];
     [self updateNavigationBarSubtitleLabel];
     [self updateBackButtonUnreadCount];
     [self autoLoadMoreIfNecessary];
+
+    if (!self.viewHasEverAppeared) {
+        // To minimize time to initial apearance, we initially disable prefetching, but then
+        // re-enable it once the view has appeared.
+        if (@available(iOS 10, *)) {
+            self.collectionView.prefetchingEnabled = YES;
+        }
+    }
 
     self.conversationViewModel.focusMessageIdOnOpen = nil;
 
@@ -1163,6 +1232,8 @@ typedef enum : NSUInteger {
 
     // Clear the "on open" state after the view has been presented.
     self.actionOnOpen = ConversationViewActionNone;
+
+    [self updateInputToolbarLayout];
 }
 
 // `viewWillDisappear` is called whenever the view *starts* to disappear,
@@ -1223,10 +1294,19 @@ typedef enum : NSUInteger {
         }
     } else {
         OWSAssertDebug(self.thread.contactIdentifier);
-        name =
-            [self.contactsManager attributedContactOrProfileNameForPhoneIdentifier:self.thread.contactIdentifier
-                                                                       primaryFont:self.headerView.titlePrimaryFont
-                                                                     secondaryFont:self.headerView.titleSecondaryFont];
+
+        if (self.thread.isNoteToSelf) {
+            name = [[NSAttributedString alloc]
+                initWithString:NSLocalizedString(@"NOTE_TO_SELF", @"Label for 1:1 conversation with yourself.")
+                    attributes:@{
+                        NSFontAttributeName : self.headerView.titlePrimaryFont,
+                    }];
+        } else {
+            name = [self.contactsManager
+                attributedContactOrProfileNameForPhoneIdentifier:self.thread.contactIdentifier
+                                                     primaryFont:self.headerView.titlePrimaryFont
+                                                   secondaryFont:self.headerView.titleSecondaryFont];
+        }
     }
     self.title = nil;
 
@@ -1352,10 +1432,13 @@ typedef enum : NSUInteger {
         // control over the margins and spacing of its content, and the buttons end up
         // too far apart and too far from the edge of the screen. So we use a smaller
         // right inset tighten up the layout.
-        imageEdgeInsets.left = round((kBarButtonSize - image.size.width) * 0.5f);
-        imageEdgeInsets.right = round((kBarButtonSize - (image.size.width + imageEdgeInsets.left)) * 0.5f);
-        imageEdgeInsets.top = round((kBarButtonSize - image.size.height) * 0.5f);
-        imageEdgeInsets.bottom = round(kBarButtonSize - (image.size.height + imageEdgeInsets.top));
+        BOOL hasCompactHeader = self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact;
+        if (!hasCompactHeader) {
+            imageEdgeInsets.left = round((kBarButtonSize - image.size.width) * 0.5f);
+            imageEdgeInsets.right = round((kBarButtonSize - (image.size.width + imageEdgeInsets.left)) * 0.5f);
+            imageEdgeInsets.top = round((kBarButtonSize - image.size.height) * 0.5f);
+            imageEdgeInsets.bottom = round(kBarButtonSize - (image.size.height + imageEdgeInsets.top));
+        }
         callButton.imageEdgeInsets = imageEdgeInsets;
         callButton.accessibilityLabel = NSLocalizedString(@"CALL_LABEL", "Accessibility label for placing call button");
         [callButton addTarget:self action:@selector(startAudioCall) forControlEvents:UIControlEventTouchUpInside];
@@ -1390,6 +1473,12 @@ typedef enum : NSUInteger {
 
 - (void)updateNavigationBarSubtitleLabel
 {
+    BOOL hasCompactHeader = self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassCompact;
+    if (hasCompactHeader) {
+        self.headerView.attributedSubtitle = nil;
+        return;
+    }
+
     NSMutableAttributedString *subtitleText = [NSMutableAttributedString new];
 
     UIColor *subtitleColor = [Theme.navbarTitleColor colorWithAlphaComponent:(CGFloat)0.9];
@@ -1530,7 +1619,7 @@ typedef enum : NSUInteger {
 - (BOOL)canCall
 {
     return !(self.isGroupConversation ||
-        [((TSContactThread *)self.thread).contactIdentifier isEqualToString:[TSAccountManager localNumber]]);
+        [((TSContactThread *)self.thread).contactIdentifier isEqualToString:self.tsAccountManager.localNumber]);
 }
 
 #pragma mark - Dynamic Text
@@ -1544,11 +1633,8 @@ typedef enum : NSUInteger {
 {
     OWSLogInfo(@"didChangePreferredContentSize");
 
-    // Evacuate cached cell sizes.
-    for (id<ConversationViewItem> viewItem in self.viewItems) {
-        [viewItem clearCachedLayoutState];
-    }
-    [self resetContentAndLayout];
+    [self resetForSizeOrOrientationChange];
+
     [self.inputToolbar updateFontSizes];
 }
 
@@ -1599,8 +1685,9 @@ typedef enum : NSUInteger {
     if (!self.showLoadMoreHeader) {
         return;
     }
-    static const CGFloat kThreshold = 50.f;
-    if (self.collectionView.contentOffset.y < kThreshold) {
+    CGSize screenSize = UIScreen.mainScreen.bounds.size;
+    CGFloat loadMoreThreshold = MAX(screenSize.width, screenSize.height);
+    if (self.collectionView.contentOffset.y < loadMoreThreshold) {
         [self.conversationViewModel loadAnotherPageOfMessages];
     }
 }
@@ -1779,10 +1866,14 @@ typedef enum : NSUInteger {
                                    // DEPRECATED: we're no longer creating these incoming SN error's per message,
                                    // but there will be some legacy ones in the wild, behind which await
                                    // as-of-yet-undecrypted messages
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                                    if ([errorMessage isKindOfClass:[TSInvalidIdentityKeyReceivingErrorMessage class]]) {
                                        // Deliberately crash if the user fails to explicitly accept the new identity
                                        // key. In practice we haven't been creating these messages in over a year.
                                        [errorMessage throws_acceptNewIdentityKey];
+#pragma clang diagnostic pop
+
                                    }
                                }];
     [actionSheetController addAction:acceptSafetyNumberAction];
@@ -1896,24 +1987,36 @@ typedef enum : NSUInteger {
 
 #pragma mark - ConversationViewCellDelegate
 
-- (void)conversationCell:(ConversationViewCell *)cell didLongpressMediaViewItem:(id<ConversationViewItem>)viewItem
+- (void)conversationCell:(ConversationViewCell *)cell
+             shouldAllowReply:(BOOL)shouldAllowReply
+    didLongpressMediaViewItem:(id<ConversationViewItem>)viewItem
 {
     NSArray<MenuAction *> *messageActions =
-        [ConversationViewItemActions mediaActionsWithConversationViewItem:viewItem delegate:self];
+        [ConversationViewItemActions mediaActionsWithConversationViewItem:viewItem
+                                                         shouldAllowReply:shouldAllowReply
+                                                                 delegate:self];
     [self presentMessageActions:messageActions withFocusedCell:cell];
 }
 
-- (void)conversationCell:(ConversationViewCell *)cell didLongpressTextViewItem:(id<ConversationViewItem>)viewItem
+- (void)conversationCell:(ConversationViewCell *)cell
+            shouldAllowReply:(BOOL)shouldAllowReply
+    didLongpressTextViewItem:(id<ConversationViewItem>)viewItem
 {
     NSArray<MenuAction *> *messageActions =
-        [ConversationViewItemActions textActionsWithConversationViewItem:viewItem delegate:self];
+        [ConversationViewItemActions textActionsWithConversationViewItem:viewItem
+                                                        shouldAllowReply:shouldAllowReply
+                                                                delegate:self];
     [self presentMessageActions:messageActions withFocusedCell:cell];
 }
 
-- (void)conversationCell:(ConversationViewCell *)cell didLongpressQuoteViewItem:(id<ConversationViewItem>)viewItem
+- (void)conversationCell:(ConversationViewCell *)cell
+             shouldAllowReply:(BOOL)shouldAllowReply
+    didLongpressQuoteViewItem:(id<ConversationViewItem>)viewItem
 {
     NSArray<MenuAction *> *messageActions =
-        [ConversationViewItemActions quotedMessageActionsWithConversationViewItem:viewItem delegate:self];
+        [ConversationViewItemActions quotedMessageActionsWithConversationViewItem:viewItem
+                                                                 shouldAllowReply:shouldAllowReply
+                                                                         delegate:self];
     [self presentMessageActions:messageActions withFocusedCell:cell];
 }
 
@@ -2235,6 +2338,19 @@ typedef enum : NSUInteger {
     // TODO: Highlight the quoted message?
 }
 
+- (void)didTapConversationItem:(id<ConversationViewItem>)viewItem linkPreview:(OWSLinkPreview *)linkPreview
+{
+    OWSAssertIsOnMainThread();
+
+    NSURL *_Nullable url = [NSURL URLWithString:linkPreview.urlString];
+    if (!url) {
+        OWSFailDebug(@"Invalid link preview URL.");
+        return;
+    }
+
+    [UIApplication.sharedApplication openURL:url];
+}
+
 - (void)showDetailViewForViewItem:(id<ConversationViewItem>)conversationItem
 {
     OWSAssertIsOnMainThread();
@@ -2313,7 +2429,7 @@ typedef enum : NSUInteger {
     [self.scrollDownButton autoSetDimension:ALDimensionHeight toSize:ConversationScrollButton.buttonSize];
 
     self.scrollDownButtonButtomConstraint = [self.scrollDownButton autoPinEdgeToSuperviewMargin:ALEdgeBottom];
-    [self.scrollDownButton autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+    [self.scrollDownButton autoPinEdgeToSuperviewSafeArea:ALEdgeTrailing];
 
 #ifdef DEBUG
     self.scrollUpButton = [[ConversationScrollButton alloc] initWithIconText:@"\uf102"];
@@ -2324,7 +2440,7 @@ typedef enum : NSUInteger {
     [self.scrollUpButton autoSetDimension:ALDimensionWidth toSize:ConversationScrollButton.buttonSize];
     [self.scrollUpButton autoSetDimension:ALDimensionHeight toSize:ConversationScrollButton.buttonSize];
     [self.scrollUpButton autoPinToTopLayoutGuideOfViewController:self withInset:0];
-    [self.scrollUpButton autoPinEdgeToSuperviewEdge:ALEdgeTrailing];
+    [self.scrollUpButton autoPinEdgeToSuperviewSafeArea:ALEdgeTrailing];
 #endif
 }
 
@@ -2391,7 +2507,7 @@ typedef enum : NSUInteger {
         id<ConversationViewItem> lastViewItem = [self.viewItems lastObject];
         OWSAssertDebug(lastViewItem);
 
-        if (lastViewItem.interaction.timestampForSorting > self.lastVisibleTimestamp) {
+        if (lastViewItem.interaction.sortId > self.lastVisibleSortId) {
             shouldShowScrollDownButton = YES;
         } else if (isScrolledUp) {
             shouldShowScrollDownButton = YES;
@@ -2490,7 +2606,6 @@ typedef enum : NSUInteger {
     OWSAssertIsOnMainThread();
     OWSAssertDebug(message);
 
-    [self updateLastVisibleTimestamp:message.timestampForSorting];
     self.lastMessageSentDate = [NSDate new];
     [self.conversationViewModel clearUnreadMessagesIndicator];
     self.inputToolbar.quotedReply = nil;
@@ -2600,8 +2715,8 @@ typedef enum : NSUInteger {
             OWSLogWarn(@"camera permission denied.");
             return;
         }
-        
-        UIImagePickerController *picker = [UIImagePickerController new];
+
+        UIImagePickerController *picker = [OWSImagePickerController new];
         picker.sourceType = UIImagePickerControllerSourceTypeCamera;
         picker.mediaTypes = @[ (__bridge NSString *)kUTTypeImage, (__bridge NSString *)kUTTypeMovie ];
         picker.allowsEditing = NO;
@@ -2645,7 +2760,7 @@ typedef enum : NSUInteger {
 
             pickerModal = [[OWSNavigationController alloc] initWithRootViewController:picker];
         } else {
-            UIImagePickerController *picker = [UIImagePickerController new];
+            UIImagePickerController *picker = [OWSImagePickerController new];
             picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
             picker.delegate = self;
             picker.mediaTypes = @[ (__bridge NSString *)kUTTypeImage, (__bridge NSString *)kUTTypeMovie ];
@@ -2894,36 +3009,6 @@ typedef enum : NSUInteger {
 - (YapDatabaseConnection *)editingDatabaseConnection
 {
     return OWSPrimaryStorage.sharedManager.dbReadWriteConnection;
-}
-
-- (BOOL)isScrolledToBottom
-{
-    CGFloat contentHeight = self.safeContentHeight;
-
-    // This is a bit subtle.
-    //
-    // The _wrong_ way to determine if we're scrolled to the bottom is to
-    // measure whether the collection view's content is "near" the bottom edge
-    // of the collection view.  This is wrong because the collection view
-    // might not have enough content to fill the collection view's bounds
-    // _under certain conditions_ (e.g. with the keyboard dismissed).
-    //
-    // What we're really interested in is something a bit more subtle:
-    // "Is the scroll view scrolled down as far as it can, "at rest".
-    //
-    // To determine that, we find the appropriate "content offset y" if
-    // the scroll view were scrolled down as far as possible.  IFF the
-    // actual "content offset y" is "near" that value, we return YES.
-    const CGFloat kIsAtBottomTolerancePts = 5;
-    // Note the usage of MAX() to handle the case where there isn't enough
-    // content to fill the collection view at its current size.
-    CGFloat contentOffsetYBottom
-        = MAX(0.f, contentHeight + self.collectionView.contentInset.bottom - self.collectionView.bounds.size.height);
-
-    CGFloat distanceFromBottom = contentOffsetYBottom - self.collectionView.contentOffset.y;
-    BOOL isScrolledToBottom = distanceFromBottom <= kIsAtBottomTolerancePts;
-
-    return isScrolledToBottom;
 }
 
 #pragma mark - Audio
@@ -3229,8 +3314,8 @@ typedef enum : NSUInteger {
 
     id<ConversationViewItem> _Nullable lastVisibleViewItem = [self.viewItems lastObject];
     if (lastVisibleViewItem) {
-        uint64_t lastVisibleTimestamp = lastVisibleViewItem.interaction.timestampForSorting;
-        self.lastVisibleTimestamp = MAX(self.lastVisibleTimestamp, lastVisibleTimestamp);
+        uint64_t lastVisibleSortId = lastVisibleViewItem.interaction.sortId;
+        self.lastVisibleSortId = MAX(self.lastVisibleSortId, lastVisibleSortId);
     }
 
     self.scrollDownButton.hidden = YES;
@@ -3238,12 +3323,12 @@ typedef enum : NSUInteger {
     self.hasUnreadMessages = NO;
 }
 
-- (void)updateLastVisibleTimestamp
+- (void)updateLastVisibleSortId
 {
     id<ConversationViewItem> _Nullable lastVisibleViewItem = [self lastVisibleViewItem];
     if (lastVisibleViewItem) {
-        uint64_t lastVisibleTimestamp = lastVisibleViewItem.interaction.timestampForSorting;
-        self.lastVisibleTimestamp = MAX(self.lastVisibleTimestamp, lastVisibleTimestamp);
+        uint64_t lastVisibleSortId = lastVisibleViewItem.interaction.sortId;
+        self.lastVisibleSortId = MAX(self.lastVisibleSortId, lastVisibleSortId);
     }
 
     [self ensureScrollDownButton];
@@ -3254,15 +3339,6 @@ typedef enum : NSUInteger {
             [[transaction ext:TSUnreadDatabaseViewExtensionName] numberOfItemsInGroup:self.thread.uniqueId];
     }];
     self.hasUnreadMessages = numberOfUnreadMessages > 0;
-}
-
-- (void)updateLastVisibleTimestamp:(uint64_t)timestamp
-{
-    OWSAssertDebug(timestamp > 0);
-
-    self.lastVisibleTimestamp = MAX(self.lastVisibleTimestamp, timestamp);
-
-    [self ensureScrollDownButton];
 }
 
 - (void)markVisibleMessagesAsRead
@@ -3280,15 +3356,16 @@ typedef enum : NSUInteger {
         return;
     }
 
-    [self updateLastVisibleTimestamp];
+    [self updateLastVisibleSortId];
 
-    uint64_t lastVisibleTimestamp = self.lastVisibleTimestamp;
+    uint64_t lastVisibleSortId = self.lastVisibleSortId;
 
-    if (lastVisibleTimestamp == 0) {
+    if (lastVisibleSortId == 0) {
         // No visible messages yet. New Thread.
         return;
     }
-    [OWSReadReceiptManager.sharedManager markAsReadLocallyBeforeTimestamp:lastVisibleTimestamp thread:self.thread];
+
+    [OWSReadReceiptManager.sharedManager markAsReadLocallyBeforeSortId:self.lastVisibleSortId thread:self.thread];
 }
 
 - (void)updateGroupModelTo:(TSGroupModel *)newGroupModel successCompletion:(void (^_Nullable)(void))successCompletion
@@ -3532,12 +3609,33 @@ typedef enum : NSUInteger {
     });
 }
 
+- (void)keyboardWillShow:(NSNotification *)notification
+{
+    [self handleKeyboardNotification:notification];
+}
+
+- (void)keyboardDidShow:(NSNotification *)notification
+{
+    [self handleKeyboardNotification:notification];
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification
+{
+    [self handleKeyboardNotification:notification];
+}
+
+- (void)keyboardDidHide:(NSNotification *)notification
+{
+    [self handleKeyboardNotification:notification];
+}
+
 - (void)keyboardWillChangeFrame:(NSNotification *)notification
 {
-    // `willChange` is the correct keyboard notifiation to observe when adjusting contentInset
-    // in lockstep with the keyboard presentation animation. `didChange` results in the contentInset
-    // not adjusting until after the keyboard is fully up.
-    OWSLogVerbose(@"");
+    [self handleKeyboardNotification:notification];
+}
+
+- (void)keyboardDidChangeFrame:(NSNotification *)notification
+{
     [self handleKeyboardNotification:notification];
 }
 
@@ -3722,14 +3820,34 @@ typedef enum : NSUInteger {
 
 #pragma mark - UIScrollViewDelegate
 
+- (void)updateLastKnownDistanceFromBottom
+{
+    // Never update the lastKnownDistanceFromBottom,
+    // if we're presenting the menu actions which
+    // temporarily meddles with the content insets.
+    if (!OWSWindowManager.sharedManager.isPresentingMenuActions) {
+        self.lastKnownDistanceFromBottom = @(self.safeDistanceFromBottom);
+    }
+}
+
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
-    [self updateLastVisibleTimestamp];
+    // Constantly try to update the lastKnownDistanceFromBottom.
+    [self updateLastKnownDistanceFromBottom];
 
-    __weak ConversationViewController *weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [weakSelf autoLoadMoreIfNecessary];
-    });
+    [self updateLastVisibleSortId];
+
+    [self.autoLoadMoreTimer invalidate];
+    self.autoLoadMoreTimer = [NSTimer weakScheduledTimerWithTimeInterval:0.1f
+                                                                  target:self
+                                                                selector:@selector(autoLoadMoreTimerDidFire)
+                                                                userInfo:nil
+                                                                 repeats:NO];
+}
+
+- (void)autoLoadMoreTimerDidFire
+{
+    [self autoLoadMoreIfNecessary];
 }
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
@@ -3773,7 +3891,7 @@ typedef enum : NSUInteger {
     OWSAssertDebug(groupModel);
 
     NSMutableSet *groupMemberIds = [NSMutableSet setWithArray:groupModel.groupMemberIds];
-    [groupMemberIds addObject:[TSAccountManager localNumber]];
+    [groupMemberIds addObject:self.tsAccountManager.localNumber];
     groupModel.groupMemberIds = [NSMutableArray arrayWithArray:[groupMemberIds allObjects]];
     [self updateGroupModelTo:groupModel successCompletion:nil];
 }
@@ -3807,11 +3925,13 @@ typedef enum : NSUInteger {
 
 - (void)sendButtonPressed
 {
+    [BenchManager startEventWithTitle:@"Send message" eventId:@"message-send"];
     [self tryToSendTextMessage:self.inputToolbar.messageText updateKeyboardState:YES];
 }
 
 - (void)tryToSendTextMessage:(NSString *)text updateKeyboardState:(BOOL)updateKeyboardState
 {
+    OWSAssertIsOnMainThread();
 
     __weak ConversationViewController *weakSelf = self;
     if ([self isBlockedConversation]) {
@@ -3859,20 +3979,32 @@ typedef enum : NSUInteger {
                                                   inThread:self.thread
                                           quotedReplyModel:self.inputToolbar.quotedReply];
     } else {
-        [self.editingDatabaseConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *_Nonnull transaction) {
+        [self.uiDatabaseConnection readWithBlock:^(YapDatabaseReadTransaction *_Nonnull transaction) {
             message = [ThreadUtil enqueueMessageWithText:text
                                                 inThread:self.thread
                                         quotedReplyModel:self.inputToolbar.quotedReply
+                                        linkPreviewDraft:self.inputToolbar.linkPreviewDraft
                                              transaction:transaction];
         }];
     }
+    [self.conversationViewModel appendUnsavedOutgoingTextMessage:message];
 
     [self messageWasSent:message];
 
-    if (updateKeyboardState) {
-        [self.inputToolbar toggleDefaultKeyboard];
-    }
-    [self.inputToolbar clearTextMessageAnimated:YES];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [BenchManager benchWithTitle:@"toggleDefaultKeyboard"
+                               block:^{
+                                   if (updateKeyboardState) {
+                                       [self.inputToolbar toggleDefaultKeyboard];
+                                   }
+                               }];
+
+        [BenchManager benchWithTitle:@"clearTextMessageAnimated"
+                               block:^{
+                                   [self.inputToolbar clearTextMessageAnimated:YES];
+                               }];
+    });
+
     [self clearDraft];
     if (didAddToProfileWhitelist) {
         [self.conversationViewModel ensureDynamicInteractions];
@@ -4131,18 +4263,20 @@ typedef enum : NSUInteger {
 
 #pragma mark - ConversationCollectionViewDelegate
 
-- (void)collectionViewWillChangeLayout
+- (void)collectionViewWillChangeSizeFrom:(CGSize)oldSize to:(CGSize)newSize
 {
     OWSAssertIsOnMainThread();
 }
 
-- (void)collectionViewDidChangeLayout
+- (void)collectionViewDidChangeSizeFrom:(CGSize)oldSize to:(CGSize)newSize
 {
     OWSAssertIsOnMainThread();
 
-    [self updateLastVisibleTimestamp];
-    self.conversationStyle.viewWidth = self.collectionView.width;
-    [self.collectionView.collectionViewLayout invalidateLayout];
+    if (oldSize.width != newSize.width) {
+        [self resetForSizeOrOrientationChange];
+    }
+
+    [self updateLastVisibleSortId];
 }
 
 #pragma mark - View Items
@@ -4205,6 +4339,87 @@ typedef enum : NSUInteger {
 
     ConversationViewCell *conversationViewCell = (ConversationViewCell *)cell;
     conversationViewCell.isCellVisible = NO;
+}
+
+// We use this hook to ensure scroll state continuity.  As the collection
+// view's content size changes, we want to keep the same cells in view.
+- (CGPoint)collectionView:(UICollectionView *)collectionView
+    targetContentOffsetForProposedContentOffset:(CGPoint)proposedContentOffset
+{
+    if (self.scrollContinuity == kScrollContinuityBottom && self.lastKnownDistanceFromBottom) {
+        NSValue *_Nullable contentOffset =
+            [self contentOffsetForLastKnownDistanceFromBottom:self.lastKnownDistanceFromBottom.floatValue];
+        if (contentOffset) {
+            proposedContentOffset = contentOffset.CGPointValue;
+        }
+    }
+
+    return proposedContentOffset;
+}
+
+// We use this hook to ensure scroll state continuity.  As the collection
+// view's content size changes, we want to keep the same cells in view.
+- (nullable NSValue *)contentOffsetForLastKnownDistanceFromBottom:(CGFloat)lastKnownDistanceFromBottom
+{
+    // Adjust the content offset to reflect the "last known" distance
+    // from the bottom of the content.
+    CGFloat contentOffsetYBottom = self.maxContentOffsetY;
+    CGFloat contentOffsetY = contentOffsetYBottom - MAX(0, lastKnownDistanceFromBottom);
+    CGFloat minContentOffsetY;
+    if (@available(iOS 11, *)) {
+        minContentOffsetY = -self.collectionView.safeAreaInsets.top;
+    } else {
+        minContentOffsetY = 0.f;
+    }
+    contentOffsetY = MAX(minContentOffsetY, contentOffsetY);
+    return [NSValue valueWithCGPoint:CGPointMake(0, contentOffsetY)];
+}
+
+#pragma mark - Scroll State
+
+- (BOOL)isScrolledToBottom
+{
+    CGFloat distanceFromBottom = self.safeDistanceFromBottom;
+    const CGFloat kIsAtBottomTolerancePts = 5;
+    BOOL isScrolledToBottom = distanceFromBottom <= kIsAtBottomTolerancePts;
+    return isScrolledToBottom;
+}
+
+- (CGFloat)safeDistanceFromBottom
+{
+    // This is a bit subtle.
+    //
+    // The _wrong_ way to determine if we're scrolled to the bottom is to
+    // measure whether the collection view's content is "near" the bottom edge
+    // of the collection view.  This is wrong because the collection view
+    // might not have enough content to fill the collection view's bounds
+    // _under certain conditions_ (e.g. with the keyboard dismissed).
+    //
+    // What we're really interested in is something a bit more subtle:
+    // "Is the scroll view scrolled down as far as it can, "at rest".
+    //
+    // To determine that, we find the appropriate "content offset y" if
+    // the scroll view were scrolled down as far as possible.  IFF the
+    // actual "content offset y" is "near" that value, we return YES.
+    CGFloat maxContentOffsetY = self.maxContentOffsetY;
+    CGFloat distanceFromBottom = maxContentOffsetY - self.collectionView.contentOffset.y;
+    return distanceFromBottom;
+}
+
+- (CGFloat)maxContentOffsetY
+{
+    CGFloat contentHeight = self.safeContentHeight;
+
+    UIEdgeInsets adjustedContentInset;
+    if (@available(iOS 11, *)) {
+        adjustedContentInset = self.collectionView.adjustedContentInset;
+    } else {
+        adjustedContentInset = self.collectionView.contentInset;
+    }
+    // Note the usage of MAX() to handle the case where there isn't enough
+    // content to fill the collection view at its current size.
+    CGFloat maxContentOffsetY = contentHeight + adjustedContentInset.bottom - self.collectionView.bounds.size.height;
+    return maxContentOffsetY;
 }
 
 #pragma mark - ContactsPickerDelegate
@@ -4407,24 +4622,18 @@ typedef enum : NSUInteger {
         return;
     } else if (conversationUpdate.conversationUpdateType == ConversationUpdateType_Reload) {
         [self resetContentAndLayout];
-        [self updateLastVisibleTimestamp];
-        [self scrollToBottomAnimated:NO];
+        [self updateLastVisibleSortId];
         return;
     }
 
     OWSAssertDebug(conversationUpdate.conversationUpdateType == ConversationUpdateType_Diff);
     OWSAssertDebug(conversationUpdate.updateItems);
 
-    BOOL wasAtBottom = [self isScrolledToBottom];
-    // We want sending messages to feel snappy.  So, if the only
-    // update is a new outgoing message AND we're already scrolled to
-    // the bottom of the conversation, skip the scroll animation.
-    __block BOOL shouldAnimateScrollToBottom = !wasAtBottom;
-    // We want to scroll to the bottom if the user:
-    //
-    // a) already was at the bottom of the conversation.
-    // b) is inserting new interactions.
-    __block BOOL scrollToBottom = wasAtBottom;
+    // We want to auto-scroll to the bottom of the conversation
+    // if the user is inserting new interactions.
+    __block BOOL scrollToBottom = NO;
+
+    self.scrollContinuity = ([self isScrolledToBottom] ? kScrollContinuityBottom : kScrollContinuityTop);
 
     void (^batchUpdates)(void) = ^{
         OWSAssertIsOnMainThread();
@@ -4455,7 +4664,6 @@ typedef enum : NSUInteger {
                         TSOutgoingMessage *outgoingMessage = (TSOutgoingMessage *)viewItem.interaction;
                         if (!outgoingMessage.isFromLinkedDevice) {
                             scrollToBottom = YES;
-                            shouldAnimateScrollToBottom = NO;
                         }
                     }
 
@@ -4480,11 +4688,14 @@ typedef enum : NSUInteger {
             OWSLogInfo(@"performBatchUpdates did not finish");
         }
 
-        [self updateLastVisibleTimestamp];
+        [self updateLastVisibleSortId];
 
-        if (scrollToBottom && shouldAnimateUpdates) {
-            [self scrollToBottomAnimated:shouldAnimateScrollToBottom];
+        if (scrollToBottom) {
+            [self scrollToBottomAnimated:NO];
         }
+
+        // Try to update the lastKnownDistanceFromBottom; the content size may have changed.
+        [self updateLastKnownDistanceFromBottom];
     };
 
     @try {
@@ -4512,6 +4723,7 @@ typedef enum : NSUInteger {
                              if (scrollToBottom) {
                                  [self scrollToBottomAnimated:NO];
                              }
+                             [BenchManager completeEventWithEventId:@"message-send"];
                          }];
         }
     } @catch (NSException *exception) {
@@ -4593,6 +4805,96 @@ typedef enum : NSUInteger {
     }
 
     [self updateShowLoadMoreHeader];
+}
+
+- (void)conversationViewModelDidReset
+{
+    OWSAssertIsOnMainThread();
+
+    // Scroll to bottom to get view back to a known good state.
+    [self scrollToBottomAnimated:NO];
+}
+
+#pragma mark - Orientation
+
+- (void)viewWillTransitionToSize:(CGSize)size
+       withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
+{
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+
+    // Snapshot the "last visible row".
+    NSIndexPath *_Nullable lastVisibleIndexPath = self.lastVisibleIndexPath;
+
+    __weak ConversationViewController *weakSelf = self;
+    [coordinator
+        animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+            if (lastVisibleIndexPath) {
+                [self.collectionView scrollToItemAtIndexPath:lastVisibleIndexPath
+                                            atScrollPosition:UICollectionViewScrollPositionBottom
+                                                    animated:NO];
+            }
+        }
+        completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+            ConversationViewController *strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+
+            // When transition animation is complete, update layout to reflect
+            // new size.
+            [strongSelf resetForSizeOrOrientationChange];
+
+            [strongSelf updateInputToolbarLayout];
+
+            if (lastVisibleIndexPath) {
+                [strongSelf.collectionView scrollToItemAtIndexPath:lastVisibleIndexPath
+                                                  atScrollPosition:UICollectionViewScrollPositionBottom
+                                                          animated:NO];
+            }
+        }];
+}
+
+- (void)traitCollectionDidChange:(nullable UITraitCollection *)previousTraitCollection
+{
+    [super traitCollectionDidChange:previousTraitCollection];
+
+    [self updateNavigationBarSubtitleLabel];
+    [self ensureBannerState];
+    [self updateBarButtonItems];
+}
+
+- (void)resetForSizeOrOrientationChange
+{
+    self.scrollContinuity = kScrollContinuityBottom;
+
+    self.conversationStyle.viewWidth = self.collectionView.width;
+    // Evacuate cached cell sizes.
+    for (id<ConversationViewItem> viewItem in self.viewItems) {
+        [viewItem clearCachedLayoutState];
+    }
+    [self.collectionView.collectionViewLayout invalidateLayout];
+    [self.collectionView reloadData];
+    if (self.viewHasEverAppeared) {
+        // Try to update the lastKnownDistanceFromBottom; the content size may have changed.
+        [self updateLastKnownDistanceFromBottom];
+    }
+    [self updateInputToolbarLayout];
+}
+
+- (void)viewSafeAreaInsetsDidChange
+{
+    [super viewSafeAreaInsetsDidChange];
+
+    [self updateInputToolbarLayout];
+}
+
+- (void)updateInputToolbarLayout
+{
+    UIEdgeInsets safeAreaInsets = UIEdgeInsetsZero;
+    if (@available(iOS 11, *)) {
+        safeAreaInsets = self.view.safeAreaInsets;
+    }
+    [self.inputToolbar updateLayoutWithSafeAreaInsets:safeAreaInsets];
 }
 
 @end

@@ -1,10 +1,11 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "TSMessage.h"
 #import "AppContext.h"
 #import "MIMETypeUtil.h"
+#import "NSString+SSK.h"
 #import "OWSContact.h"
 #import "OWSDisappearingMessagesConfiguration.h"
 #import "TSAttachment.h"
@@ -12,7 +13,7 @@
 #import "TSQuotedMessage.h"
 #import "TSThread.h"
 #import <SignalCoreKit/NSDate+OWS.h>
-#import <SignalCoreKit/NSString+SSK.h>
+#import <SignalServiceKit/SignalServiceKit-Swift.h>
 #import <YapDatabase/YapDatabase.h>
 #import <YapDatabase/YapDatabaseTransaction.h>
 
@@ -47,12 +48,7 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
  */
 @property (nonatomic, readonly) NSUInteger schemaVersion;
 
-// The timestamp property is populated by the envelope,
-// which is created by the sender.
-//
-// We typically want to order messages locally by when
-// they were received & decrypted, not by when they were sent.
-@property (nonatomic) uint64_t receivedAtTimestamp;
+@property (nonatomic, nullable) OWSLinkPreview *linkPreview;
 
 @end
 
@@ -68,6 +64,7 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
                          expireStartedAt:(uint64_t)expireStartedAt
                            quotedMessage:(nullable TSQuotedMessage *)quotedMessage
                             contactShare:(nullable OWSContact *)contactShare
+                             linkPreview:(nullable OWSLinkPreview *)linkPreview
 {
     self = [super initInteractionWithTimestamp:timestamp inThread:thread];
 
@@ -82,9 +79,9 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
     _expiresInSeconds = expiresInSeconds;
     _expireStartedAt = expireStartedAt;
     [self updateExpiresAt];
-    _receivedAtTimestamp = [NSDate ows_millisecondTimeStamp];
     _quotedMessage = quotedMessage;
     _contactShare = contactShare;
+    _linkPreview = linkPreview;
 
     return self;
 }
@@ -133,18 +130,6 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
 
     if (!_attachmentIds) {
         _attachmentIds = [NSMutableArray new];
-    }
-
-    if (_receivedAtTimestamp == 0) {
-        // Upgrade from the older "receivedAtDate" and "receivedAt" properties if
-        // necessary.
-        NSDate *receivedAtDate = [coder decodeObjectForKey:@"receivedAtDate"];
-        if (!receivedAtDate) {
-            receivedAtDate = [coder decodeObjectForKey:@"receivedAt"];
-        }
-        if (receivedAtDate) {
-            _receivedAtTimestamp = [NSDate ows_millisecondsSince1970ForDate:receivedAtDate];
-        }
     }
 
     _schemaVersion = OWSMessageSchemaVersion;
@@ -197,6 +182,28 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
 - (BOOL)hasAttachments
 {
     return self.attachmentIds ? (self.attachmentIds.count > 0) : NO;
+}
+
+- (NSArray<NSString *> *)allAttachmentIds
+{
+    NSMutableArray<NSString *> *result = [NSMutableArray new];
+    if (self.attachmentIds.count > 0) {
+        [result addObjectsFromArray:self.attachmentIds];
+    }
+
+    if (self.quotedMessage) {
+        [result addObjectsFromArray:self.quotedMessage.thumbnailAttachmentStreamIds];
+    }
+
+    if (self.contactShare.avatarAttachmentId) {
+        [result addObject:self.contactShare.avatarAttachmentId];
+    }
+
+    if (self.linkPreview.imageAttachmentId) {
+        [result addObject:self.linkPreview.imageAttachmentId];
+    }
+
+    return [result copy];
 }
 
 - (NSArray<TSAttachment *> *)attachmentsWithTransaction:(YapDatabaseReadTransaction *)transaction
@@ -353,7 +360,7 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
 {
     [super removeWithTransaction:transaction];
 
-    for (NSString *attachmentId in self.attachmentIds) {
+    for (NSString *attachmentId in self.allAttachmentIds) {
         // We need to fetch each attachment, since [TSAttachment removeWithTransaction:] does important work.
         TSAttachment *_Nullable attachment =
             [TSAttachment fetchObjectWithUniqueID:attachmentId transaction:transaction];
@@ -363,10 +370,6 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
         }
         [attachment removeWithTransaction:transaction];
     };
-
-    if (self.contactShare.avatarAttachmentId) {
-        [self.contactShare removeAvatarAttachmentWithTransaction:transaction];
-    }
 
     // Updates inbox thread preview
     [self touchThreadWithTransaction:transaction];
@@ -382,7 +385,7 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
     return self.expiresInSeconds > 0;
 }
 
-- (uint64_t)timestampForSorting
+- (uint64_t)timestampForLegacySorting
 {
     if ([self shouldUseReceiptDateForSorting] && self.receivedAtTimestamp > 0) {
         return self.receivedAtTimestamp;
@@ -429,6 +432,17 @@ static const NSUInteger OWSMessageSchemaVersion = 4;
     [self applyChangeToSelfAndLatestCopy:transaction
                              changeBlock:^(TSMessage *message) {
                                  [message setExpireStartedAt:expireStartedAt];
+                             }];
+}
+
+- (void)updateWithLinkPreview:(OWSLinkPreview *)linkPreview transaction:(YapDatabaseReadWriteTransaction *)transaction
+{
+    OWSAssertDebug(linkPreview);
+    OWSAssertDebug(transaction);
+
+    [self applyChangeToSelfAndLatestCopy:transaction
+                             changeBlock:^(TSMessage *message) {
+                                 [message setLinkPreview:linkPreview];
                              }];
 }
 

@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSMessageBubbleView.h"
@@ -39,6 +39,8 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
 @property (nonatomic, nullable) UIView *quotedMessageView;
 
 @property (nonatomic, nullable) UIView *bodyMediaView;
+
+@property (nonatomic) LinkPreviewView *linkPreviewView;
 
 // Should lazy-load expensive view contents (images, etc.).
 // Should do nothing if view is already loaded.
@@ -99,6 +101,8 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
     // Setting dataDetectorTypes is expensive.  Do it just once.
     self.bodyTextView.dataDetectorTypes = kOWSAllowedDataDetectorTypes;
     self.bodyTextView.hidden = YES;
+
+    self.linkPreviewView = [[LinkPreviewView alloc] initWithDraftDelegate:nil];
 
     self.footerView = [OWSMessageFooterView new];
 }
@@ -358,6 +362,19 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
         }
     }
 
+    if (self.viewItem.linkPreview) {
+        if (self.isQuotedReply) {
+            UIView *spacerView = [UIView containerView];
+            [spacerView autoSetDimension:ALDimensionHeight toSize:self.bodyMediaQuotedReplyVSpacing];
+            [spacerView setCompressionResistanceHigh];
+            [self.stackView addArrangedSubview:spacerView];
+        }
+
+        self.linkPreviewView.state = self.linkPreviewState;
+        [self.stackView addArrangedSubview:self.linkPreviewView];
+        [self.linkPreviewView addBorderViewsWithBubbleView:self.bubbleView];
+    }
+
     // We render malformed messages as "empty text" messages,
     // so create a text view if there is no body media view.
     if (self.hasBodyText || !bodyMediaView) {
@@ -577,12 +594,26 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
         case OWSMessageCellType_Unknown:
         case OWSMessageCellType_TextMessage:
         case OWSMessageCellType_OversizeTextMessage:
-            return NO;
         case OWSMessageCellType_Audio:
         case OWSMessageCellType_GenericAttachment:
         case OWSMessageCellType_DownloadingAttachment:
         case OWSMessageCellType_ContactShare:
             return NO;
+        case OWSMessageCellType_MediaAlbum:
+            return YES;
+    }
+}
+
+- (BOOL)hasBodyMediaView {
+    switch (self.cellType) {
+        case OWSMessageCellType_Unknown:
+        case OWSMessageCellType_TextMessage:
+        case OWSMessageCellType_OversizeTextMessage:
+            return NO;
+        case OWSMessageCellType_Audio:
+        case OWSMessageCellType_GenericAttachment:
+        case OWSMessageCellType_DownloadingAttachment:
+        case OWSMessageCellType_ContactShare:
         case OWSMessageCellType_MediaAlbum:
             return YES;
     }
@@ -601,8 +632,14 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
 
 - (BOOL)hasBottomFooter
 {
-    BOOL shouldFooterOverlayMedia = (self.canFooterOverlayMedia && !self.hasBodyText);
-    return !self.viewItem.shouldHideFooter && !shouldFooterOverlayMedia;
+    BOOL shouldFooterOverlayMedia = (self.canFooterOverlayMedia && self.hasBodyMediaView && !self.hasBodyText);
+    if (self.viewItem.shouldHideFooter) {
+        return NO;
+    } else if (shouldFooterOverlayMedia) {
+        return NO;
+    } else {
+        return YES;
+    }
 }
 
 - (BOOL)insertAnyTextViewsIntoStackView:(NSArray<UIView *> *)textViews
@@ -636,6 +673,16 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
 - (CGFloat)quotedReplyTopMargin
 {
     return 6.f;
+}
+
+- (nullable LinkPreviewSent *)linkPreviewState
+{
+    if (!self.viewItem.linkPreview) {
+        return nil;
+    }
+    return [[LinkPreviewSent alloc] initWithLinkPreview:self.viewItem.linkPreview
+                                        imageAttachment:self.viewItem.linkPreviewAttachment
+                                      conversationStyle:self.conversationStyle];
 }
 
 #pragma mark - Load / Unload
@@ -941,7 +988,10 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
     OWSAssertDebug(self.conversationStyle);
     OWSAssertDebug(self.conversationStyle.maxMessageWidth > 0);
 
-    CGFloat maxMessageWidth = self.conversationStyle.maxMessageWidth;
+    // This upper bound should have no effect in portrait orientation.
+    // It limits body media size in landscape.
+    const CGFloat kMaxBodyMediaSize = 350;
+    CGFloat maxMessageWidth = MIN(kMaxBodyMediaSize, self.conversationStyle.maxMessageWidth);
     if (!self.hasFullWidthMediaView) {
         CGFloat hMargins = self.conversationStyle.textInsetHorizontal * 2;
         maxMessageWidth -= hMargins;
@@ -1135,7 +1185,16 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
 
         if (bodyMediaSize && quotedMessageSize && self.hasFullWidthMediaView) {
             cellSize.height += self.bodyMediaQuotedReplyVSpacing;
+        } else if (quotedMessageSize && self.viewItem.linkPreview) {
+            cellSize.height += self.bodyMediaQuotedReplyVSpacing;
         }
+    }
+
+    if (self.viewItem.linkPreview) {
+        CGSize linkPreviewSize = [self.linkPreviewView measureWithSentState:self.linkPreviewState];
+        linkPreviewSize.width = MIN(linkPreviewSize.width, self.conversationStyle.maxMessageWidth);
+        cellSize.width = MAX(cellSize.width, linkPreviewSize.width);
+        cellSize.height += linkPreviewSize.height;
     }
 
     NSValue *_Nullable bodyTextSize = [self bodyTextSize];
@@ -1264,6 +1323,9 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
 
     [self.contactShareButtonsView removeFromSuperview];
     self.contactShareButtonsView = nil;
+
+    [self.linkPreviewView removeFromSuperview];
+    self.linkPreviewView.state = nil;
 }
 
 #pragma mark - Gestures
@@ -1318,6 +1380,13 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
                 OWSFailDebug(@"Missing quoted message.");
             }
             break;
+        case OWSMessageGestureLocation_LinkPreview:
+            if (self.viewItem.linkPreview) {
+                [self.delegate didTapConversationItem:self.viewItem linkPreview:self.viewItem.linkPreview];
+            } else {
+                OWSFailDebug(@"Missing link preview.");
+            }
+            break;
     }
 }
 
@@ -1356,10 +1425,6 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
             OWSAssertDebug(self.bodyMediaView);
             OWSAssertDebug(self.viewItem.mediaAlbumItems.count > 0);
 
-            if (self.viewItem.mediaAlbumHasFailedAttachment) {
-                [self.delegate didTapFailedIncomingAttachment:self.viewItem];
-                return;
-            }
             if (![self.bodyMediaView isKindOfClass:[OWSMediaAlbumCellView class]]) {
                 OWSFailDebug(@"Unexpected body media view: %@", self.bodyMediaView.class);
                 return;
@@ -1372,8 +1437,21 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
                 return;
             }
 
+            if ([mediaAlbumCellView isMoreItemsViewWithMediaView:mediaView]
+                && self.viewItem.mediaAlbumHasFailedAttachment) {
+                [self.delegate didTapFailedIncomingAttachment:self.viewItem];
+                return;
+            }
+
             TSAttachment *attachment = mediaView.attachment;
-            if (![attachment isKindOfClass:[TSAttachmentStream class]]) {
+            if ([attachment isKindOfClass:[TSAttachmentPointer class]]) {
+                TSAttachmentPointer *attachmentPointer = (TSAttachmentPointer *)attachment;
+                if (attachmentPointer.state == TSAttachmentPointerStateFailed) {
+                    // Treat the tap as a "retry" tap if the user taps on a failed download.
+                    [self.delegate didTapFailedIncomingAttachment:self.viewItem];
+                    return;
+                }
+            } else if (![attachment isKindOfClass:[TSAttachmentStream class]]) {
                 OWSLogWarn(@"Media attachment not yet downloaded.");
                 return;
             }
@@ -1394,6 +1472,13 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
         CGPoint location = [self convertPoint:locationInMessageBubble toView:self.quotedMessageView];
         if (location.y <= self.quotedMessageView.height) {
             return OWSMessageGestureLocation_QuotedReply;
+        }
+    }
+
+    if (self.viewItem.linkPreview) {
+        CGPoint location = [self convertPoint:locationInMessageBubble toView:self.linkPreviewView];
+        if (CGRectContainsPoint(self.linkPreviewView.bounds, location)) {
+            return OWSMessageGestureLocation_LinkPreview;
         }
     }
 
@@ -1425,6 +1510,11 @@ const UIDataDetectorTypes kOWSAllowedDataDetectorTypes
     [self.delegate didTapConversationItem:self.viewItem
                                      quotedReply:quotedReply
         failedThumbnailDownloadAttachmentPointer:attachmentPointer];
+}
+
+- (void)didCancelQuotedReply
+{
+    OWSFailDebug(@"Sent quoted replies should not be cancellable.");
 }
 
 #pragma mark - OWSContactShareButtonsViewDelegate

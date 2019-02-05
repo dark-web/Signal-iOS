@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import <UIKit/UIKit.h>
@@ -20,10 +20,9 @@ FOUNDATION_EXPORT const unsigned char SignalMessagingVersionString[];
 #import <SignalMessaging/CountryCodeViewController.h>
 #import <SignalMessaging/DebugLogger.h>
 #import <SignalMessaging/Environment.h>
-#import <SignalMessaging/LockInteractionController.h>
 #import <SignalMessaging/NSAttributedString+OWS.h>
-#import <SignalMessaging/NSString+OWS.h>
 #import <SignalMessaging/NewNonContactConversationViewController.h>
+#import <SignalMessaging/OWSAnyTouchGestureRecognizer.h>
 #import <SignalMessaging/OWSAudioPlayer.h>
 #import <SignalMessaging/OWSContactAvatarBuilder.h>
 #import <SignalMessaging/OWSContactOffersInteraction.h>
@@ -32,7 +31,6 @@ FOUNDATION_EXPORT const unsigned char SignalMessagingVersionString[];
 #import <SignalMessaging/OWSDatabaseMigration.h>
 #import <SignalMessaging/OWSFormat.h>
 #import <SignalMessaging/OWSGroupAvatarBuilder.h>
-#import <SignalMessaging/OWSMath.h>
 #import <SignalMessaging/OWSNavigationController.h>
 #import <SignalMessaging/OWSPreferences.h>
 #import <SignalMessaging/OWSProfileManager.h>
@@ -50,7 +48,6 @@ FOUNDATION_EXPORT const unsigned char SignalMessagingVersionString[];
 #import <SignalMessaging/SelectRecipientViewController.h>
 #import <SignalMessaging/SharingThreadPickerViewController.h>
 #import <SignalMessaging/SignalKeyingStorage.h>
-#import <SignalMessaging/TSUnreadIndicatorInteraction.h>
 #import <SignalMessaging/Theme.h>
 #import <SignalMessaging/ThreadUtil.h>
 #import <SignalMessaging/ThreadViewHelper.h>

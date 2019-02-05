@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSDisappearingMessagesConfigurationMessage.h"
@@ -26,6 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)initWithConfiguration:(OWSDisappearingMessagesConfiguration *)configuration thread:(TSThread *)thread
 {
+    // MJK TODO - remove sender timestamp
     self = [super initOutgoingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                           inThread:thread
                                        messageBody:nil
@@ -35,7 +36,8 @@ NS_ASSUME_NONNULL_BEGIN
                                     isVoiceMessage:NO
                                   groupMetaMessage:TSGroupMetaMessageUnspecified
                                      quotedMessage:nil
-                                      contactShare:nil];
+                                      contactShare:nil
+                                       linkPreview:nil];
     if (!self) {
         return self;
     }

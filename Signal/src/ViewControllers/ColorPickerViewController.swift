@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import Foundation
@@ -340,6 +340,9 @@ private class MockConversationViewItem: NSObject, ConversationViewItem {
     var hasBodyTextActionContent: Bool = false
     var hasMediaActionContent: Bool = false
     var mediaAlbumItems: [ConversationMediaAlbumItem]?
+    var hasCachedLayoutState: Bool = false
+    var linkPreview: OWSLinkPreview?
+    var linkPreviewAttachment: TSAttachment?
 
     override init() {
         super.init()
@@ -451,6 +454,7 @@ private class MockIncomingMessage: TSIncomingMessage {
                    expiresInSeconds: 0,
                    quotedMessage: nil,
                    contactShare: nil,
+                   linkPreview: nil,
                    serverTimestamp: nil,
                    wasReceivedByUD: false)
     }
@@ -480,7 +484,8 @@ private class MockOutgoingMessage: TSOutgoingMessage {
                    isVoiceMessage: false,
                    groupMetaMessage: .unspecified,
                    quotedMessage: nil,
-                   contactShare: nil)
+                   contactShare: nil,
+                   linkPreview: nil)
     }
 
     required init?(coder: NSCoder) {

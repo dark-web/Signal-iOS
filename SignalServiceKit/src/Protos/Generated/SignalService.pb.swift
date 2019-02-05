@@ -634,6 +634,11 @@ struct SignalServiceProtos_DataMessage {
     set {_uniqueStorage()._contact = newValue}
   }
 
+  var preview: [SignalServiceProtos_DataMessage.Preview] {
+    get {return _storage._preview}
+    set {_uniqueStorage()._preview = newValue}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   enum Flags: SwiftProtobuf.Enum {
@@ -1212,6 +1217,46 @@ struct SignalServiceProtos_DataMessage {
     fileprivate var _storage = _StorageClass.defaultInstance
   }
 
+  struct Preview {
+    // SwiftProtobuf.Message conformance is added in an extension below. See the
+    // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+    // methods supported on all messages.
+
+    /// @required
+    var url: String {
+      get {return _storage._url ?? String()}
+      set {_uniqueStorage()._url = newValue}
+    }
+    /// Returns true if `url` has been explicitly set.
+    var hasURL: Bool {return _storage._url != nil}
+    /// Clears the value of `url`. Subsequent reads from it will return its default value.
+    mutating func clearURL() {_uniqueStorage()._url = nil}
+
+    var title: String {
+      get {return _storage._title ?? String()}
+      set {_uniqueStorage()._title = newValue}
+    }
+    /// Returns true if `title` has been explicitly set.
+    var hasTitle: Bool {return _storage._title != nil}
+    /// Clears the value of `title`. Subsequent reads from it will return its default value.
+    mutating func clearTitle() {_uniqueStorage()._title = nil}
+
+    var image: SignalServiceProtos_AttachmentPointer {
+      get {return _storage._image ?? SignalServiceProtos_AttachmentPointer()}
+      set {_uniqueStorage()._image = newValue}
+    }
+    /// Returns true if `image` has been explicitly set.
+    var hasImage: Bool {return _storage._image != nil}
+    /// Clears the value of `image`. Subsequent reads from it will return its default value.
+    mutating func clearImage() {_uniqueStorage()._image = nil}
+
+    var unknownFields = SwiftProtobuf.UnknownStorage()
+
+    init() {}
+
+    fileprivate var _storage = _StorageClass.defaultInstance
+  }
+
   init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
@@ -1750,6 +1795,15 @@ struct SignalServiceProtos_SyncMessage {
     /// Clears the value of `typingIndicators`. Subsequent reads from it will return its default value.
     mutating func clearTypingIndicators() {self._typingIndicators = nil}
 
+    var linkPreviews: Bool {
+      get {return _linkPreviews ?? false}
+      set {_linkPreviews = newValue}
+    }
+    /// Returns true if `linkPreviews` has been explicitly set.
+    var hasLinkPreviews: Bool {return self._linkPreviews != nil}
+    /// Clears the value of `linkPreviews`. Subsequent reads from it will return its default value.
+    mutating func clearLinkPreviews() {self._linkPreviews = nil}
+
     var unknownFields = SwiftProtobuf.UnknownStorage()
 
     init() {}
@@ -1757,6 +1811,7 @@ struct SignalServiceProtos_SyncMessage {
     fileprivate var _readReceipts: Bool? = nil
     fileprivate var _unidentifiedDeliveryIndicators: Bool? = nil
     fileprivate var _typingIndicators: Bool? = nil
+    fileprivate var _linkPreviews: Bool? = nil
   }
 
   init() {}
@@ -2772,6 +2827,7 @@ extension SignalServiceProtos_DataMessage: SwiftProtobuf.Message, SwiftProtobuf.
     7: .same(proto: "timestamp"),
     8: .same(proto: "quote"),
     9: .same(proto: "contact"),
+    10: .same(proto: "preview"),
   ]
 
   fileprivate class _StorageClass {
@@ -2784,6 +2840,7 @@ extension SignalServiceProtos_DataMessage: SwiftProtobuf.Message, SwiftProtobuf.
     var _timestamp: UInt64? = nil
     var _quote: SignalServiceProtos_DataMessage.Quote? = nil
     var _contact: [SignalServiceProtos_DataMessage.Contact] = []
+    var _preview: [SignalServiceProtos_DataMessage.Preview] = []
 
     static let defaultInstance = _StorageClass()
 
@@ -2799,6 +2856,7 @@ extension SignalServiceProtos_DataMessage: SwiftProtobuf.Message, SwiftProtobuf.
       _timestamp = source._timestamp
       _quote = source._quote
       _contact = source._contact
+      _preview = source._preview
     }
   }
 
@@ -2823,6 +2881,7 @@ extension SignalServiceProtos_DataMessage: SwiftProtobuf.Message, SwiftProtobuf.
         case 7: try decoder.decodeSingularUInt64Field(value: &_storage._timestamp)
         case 8: try decoder.decodeSingularMessageField(value: &_storage._quote)
         case 9: try decoder.decodeRepeatedMessageField(value: &_storage._contact)
+        case 10: try decoder.decodeRepeatedMessageField(value: &_storage._preview)
         default: break
         }
       }
@@ -2858,6 +2917,9 @@ extension SignalServiceProtos_DataMessage: SwiftProtobuf.Message, SwiftProtobuf.
       if !_storage._contact.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._contact, fieldNumber: 9)
       }
+      if !_storage._preview.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._preview, fieldNumber: 10)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2876,6 +2938,7 @@ extension SignalServiceProtos_DataMessage: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._timestamp != rhs_storage._timestamp {return false}
         if _storage._quote != rhs_storage._quote {return false}
         if _storage._contact != rhs_storage._contact {return false}
+        if _storage._preview != rhs_storage._preview {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -3436,6 +3499,83 @@ extension SignalServiceProtos_DataMessage.Contact.Avatar: SwiftProtobuf.Message,
         let rhs_storage = _args.1
         if _storage._avatar != rhs_storage._avatar {return false}
         if _storage._isProfile != rhs_storage._isProfile {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension SignalServiceProtos_DataMessage.Preview: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = SignalServiceProtos_DataMessage.protoMessageName + ".Preview"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "url"),
+    2: .same(proto: "title"),
+    3: .same(proto: "image"),
+  ]
+
+  fileprivate class _StorageClass {
+    var _url: String? = nil
+    var _title: String? = nil
+    var _image: SignalServiceProtos_AttachmentPointer? = nil
+
+    static let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _url = source._url
+      _title = source._title
+      _image = source._image
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        switch fieldNumber {
+        case 1: try decoder.decodeSingularStringField(value: &_storage._url)
+        case 2: try decoder.decodeSingularStringField(value: &_storage._title)
+        case 3: try decoder.decodeSingularMessageField(value: &_storage._image)
+        default: break
+        }
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      if let v = _storage._url {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 1)
+      }
+      if let v = _storage._title {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+      }
+      if let v = _storage._image {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: SignalServiceProtos_DataMessage.Preview, rhs: SignalServiceProtos_DataMessage.Preview) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._url != rhs_storage._url {return false}
+        if _storage._title != rhs_storage._title {return false}
+        if _storage._image != rhs_storage._image {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -4069,6 +4209,7 @@ extension SignalServiceProtos_SyncMessage.Configuration: SwiftProtobuf.Message, 
     1: .same(proto: "readReceipts"),
     2: .same(proto: "unidentifiedDeliveryIndicators"),
     3: .same(proto: "typingIndicators"),
+    4: .same(proto: "linkPreviews"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -4077,6 +4218,7 @@ extension SignalServiceProtos_SyncMessage.Configuration: SwiftProtobuf.Message, 
       case 1: try decoder.decodeSingularBoolField(value: &self._readReceipts)
       case 2: try decoder.decodeSingularBoolField(value: &self._unidentifiedDeliveryIndicators)
       case 3: try decoder.decodeSingularBoolField(value: &self._typingIndicators)
+      case 4: try decoder.decodeSingularBoolField(value: &self._linkPreviews)
       default: break
       }
     }
@@ -4092,6 +4234,9 @@ extension SignalServiceProtos_SyncMessage.Configuration: SwiftProtobuf.Message, 
     if let v = self._typingIndicators {
       try visitor.visitSingularBoolField(value: v, fieldNumber: 3)
     }
+    if let v = self._linkPreviews {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -4099,6 +4244,7 @@ extension SignalServiceProtos_SyncMessage.Configuration: SwiftProtobuf.Message, 
     if lhs._readReceipts != rhs._readReceipts {return false}
     if lhs._unidentifiedDeliveryIndicators != rhs._unidentifiedDeliveryIndicators {return false}
     if lhs._typingIndicators != rhs._typingIndicators {return false}
+    if lhs._linkPreviews != rhs._linkPreviews {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

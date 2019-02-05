@@ -311,8 +311,14 @@
 /* Label for generic done button. */
 "BUTTON_DONE" = "Klaar";
 
+/* Label for redo button. */
+"BUTTON_REDO" = "Opnieuw doen";
+
 /* Button text to enable batch selection mode */
 "BUTTON_SELECT" = "Selecteren";
+
+/* Label for undo button. */
+"BUTTON_UNDO" = "Ongedaan maken";
 
 /* Label for button that lets users call a contact again. */
 "CALL_AGAIN_BUTTON_TITLE" = "Opnieuw bellen";
@@ -745,19 +751,19 @@
 "DEVICE_LIST_UPDATE_FAILED_TITLE" = "Het bijwerken van de lijst met apparaten is mislukt.";
 
 /* table cell label in conversation settings */
-"DISAPPEARING_MESSAGES" = "Verdwijnende berichten";
+"DISAPPEARING_MESSAGES" = "Zelf-wissende berichten";
 
 /* Info Message when added to a group which has enabled disappearing messages. Embeds {{time amount}} before messages disappear, see the *_TIME_AMOUNT strings for context. */
 "DISAPPEARING_MESSAGES_CONFIGURATION_GROUP_EXISTING_FORMAT" = "Berichten in dit gesprek zullen na %@ verdwijnen.";
 
 /* subheading in conversation settings */
-"DISAPPEARING_MESSAGES_DESCRIPTION" = "Indien ingeschakeld zullen verzonden en ontvangen berichten in dit gesprek verdwijnen nadat ze zijn gelezen.";
+"DISAPPEARING_MESSAGES_DESCRIPTION" = "Indien ingeschakeld zullen nieuwe verzonden en ontvangen berichten in dit gesprek zich zelf wissen nadat ze zijn gelezen.";
 
 /* Accessibility hint that contains current timeout information */
 "DISAPPEARING_MESSAGES_HINT" = "Momenteel verdwijnen berichten na %@";
 
 /* Accessibility label for disappearing messages */
-"DISAPPEARING_MESSAGES_LABEL" = "Instellingen voor verdwijnende berichten";
+"DISAPPEARING_MESSAGES_LABEL" = "Instellingen voor zelf-wissende berichten";
 
 /* Short text to dismiss current modal / actionsheet / screen */
 "DISMISS_BUTTON_TEXT" = "Sluiten";
@@ -1074,6 +1080,18 @@
 /* Title for the home view's default mode. */
 "HOME_VIEW_TITLE_INBOX" = "Signal";
 
+/* Label for brush button in image editor. */
+"IMAGE_EDITOR_BRUSH_BUTTON" = "Kwast";
+
+/* Label for crop button in image editor. */
+"IMAGE_EDITOR_CROP_BUTTON" = "Bijsnijden";
+
+/* Momentarily shown to the user when attempting to select more images than is allowed. Embeds {{max number of items}} that can be shared. */
+"IMAGE_PICKER_CAN_SELECT_NO_MORE_TOAST_FORMAT" = "Je kunt niet meer dan %@ items delen.";
+
+/* alert title */
+"IMAGE_PICKER_FAILED_TO_PROCESS_ATTACHMENTS" = "Bijlage selecteren mislukt.";
+
 /* Call setup status label */
 "IN_CALL_CONNECTING" = "Verbinden…";
 
@@ -1166,6 +1184,9 @@
 
 /* Navigation title when scanning QR code to add new device. */
 "LINK_NEW_DEVICE_TITLE" = "Nieuw apparaat koppelen";
+
+/* Label for link previews with an unknown host. */
+"LINK_PREVIEW_UNKNOWN_DOMAIN" = "Voorbeeldweergave";
 
 /* Menu item and navbar title for the device manager */
 "LINKED_DEVICES_TITLE" = "Gekoppelde apparaten";
@@ -1454,6 +1475,9 @@
 /* Label for a button that lets users search for contacts by phone number */
 "NO_CONTACTS_SEARCH_BY_PHONE_NUMBER" = "Zoek contacten op telefoonnummer";
 
+/* Label for 1:1 conversation with yourself. */
+"NOTE_TO_SELF" = "Notitie aan mezelf";
+
 /* Lock screen notification text presented after user powers on their device without unlocking. Embeds {{device model}} (either 'iPad' or 'iPhone') */
 "NOTIFICATION_BODY_PHONE_LOCKED_FORMAT" = "U heeft misschien berichten ontvangen terwijl uw %@ aan het herstarten was.";
 
@@ -1488,10 +1512,10 @@
 "OPEN_SETTINGS_BUTTON" = "Instellingen";
 
 /* Info Message when {{other user}} disables or doesn't support disappearing messages */
-"OTHER_DISABLED_DISAPPEARING_MESSAGES_CONFIGURATION" = "%@ heeft verdwijnende berichten uitgeschakeld.";
+"OTHER_DISABLED_DISAPPEARING_MESSAGES_CONFIGURATION" = "%@ heeft zelf-wissende berichten uitgeschakeld.";
 
 /* Info Message when {{other user}} updates message expiration to {{time amount}}, see the *_TIME_AMOUNT strings for context. */
-"OTHER_UPDATED_DISAPPEARING_MESSAGES_CONFIGURATION" = "%@ heeft de berichtverdwijntijd ingesteld op %@.";
+"OTHER_UPDATED_DISAPPEARING_MESSAGES_CONFIGURATION" = "%@ heeft de timer voor zelf-wissende berichten ingesteld op %@.";
 
 /* Label warning the user that the Signal service may be down. */
 "OUTAGE_WARNING" = "Signal ondervindt momenteel technische problemen. We zijn hard aan het werk de service zo snel mogelijk te herstellen.";
@@ -2066,6 +2090,15 @@
 /* table cell label */
 "SETTINGS_LEGAL_TERMS_CELL" = "Voorwaarden en privacybeleid";
 
+/* Setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS" = "Voorbeeldweergaven verzenden";
+
+/* Footer for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_FOOTER" = "Voorbeelden worden ondersteund voor koppelingen naar Imgur, Instagram, Reddit en YouTube.";
+
+/* Header for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_HEADER" = "Voorbeeldweergaven";
+
 /* Title for settings activity */
 "SETTINGS_NAV_BAR_TITLE" = "Instellingen";
 
@@ -2342,6 +2375,15 @@
 /* button label shown one time, after upgrade */
 "UPGRADE_EXPERIENCE_ENABLE_TYPING_INDICATOR_BUTTON" = "Zet typindicatoren aan";
 
+/* Body text for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_DESCRIPTION" = "Optional link previews are now supported for some of the most popular sites on the Internet.";
+
+/* Subtitle for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_SUBTITLE" = "You can disable or enable this feature anytime in your Signal settings (Privacy > Send link previews).";
+
+/* Header for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_TITLE" = "Voorbeeldweergaven";
+
 /* Description for notification audio customization */
 "UPGRADE_EXPERIENCE_INTRODUCING_NOTIFICATION_AUDIO_DESCRIPTION" = "Je kan nu standaard- en gespreksspecifieke meldingsgeluiden instellen, en oproepen zullen de beltoon die je voor elk systeemcontact gekozen hebt respecteren.";
 
@@ -2386,9 +2428,6 @@
 
 /* Title for the alert indicating that user should upgrade iOS. */
 "UPGRADE_IOS_ALERT_TITLE" = "Werk iOS bij";
-
-/* No comment provided by engineer. */
-"Upgrading Signal ..." = "Signal wordt bijgewerkt...";
 
 /* button text for back button on verification view */
 "VERIFICATION_BACK_BUTTON" = "Terug";
@@ -2445,7 +2484,7 @@
 "WAITING_TO_COMPLETE_DEVICE_LINK_TEXT" = "Vervolledig de installatie op Signal Desktop.";
 
 /* Info Message when you disable disappearing messages */
-"YOU_DISABLED_DISAPPEARING_MESSAGES_CONFIGURATION" = "Je hebt verdwijnende berichten uitgeschakeld.";
+"YOU_DISABLED_DISAPPEARING_MESSAGES_CONFIGURATION" = "Je hebt zelf-wissende berichten uitgeschakeld.";
 
 /* Info message embedding a {{time amount}}, see the *_TIME_AMOUNT strings for context. */
-"YOU_UPDATED_DISAPPEARING_MESSAGES_CONFIGURATION" = "Je hebt de berichtverdwijntijd ingesteld op %@.";
+"YOU_UPDATED_DISAPPEARING_MESSAGES_CONFIGURATION" = "Je hebt de timer voor zelf-wissende berichten ingesteld op %@.";

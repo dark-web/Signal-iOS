@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "TSInfoMessage.h"
@@ -48,6 +48,7 @@ NSUInteger TSInfoMessageSchemaVersion = 1;
                          inThread:(TSThread *)thread
                       messageType:(TSInfoMessageType)infoMessage
 {
+    // MJK TODO - remove senderTimestamp
     self = [super initMessageWithTimestamp:timestamp
                                   inThread:thread
                                messageBody:nil
@@ -55,7 +56,8 @@ NSUInteger TSInfoMessageSchemaVersion = 1;
                           expiresInSeconds:0
                            expireStartedAt:0
                              quotedMessage:nil
-                              contactShare:nil];
+                              contactShare:nil
+                               linkPreview:nil];
 
     if (!self) {
         return self;
@@ -100,6 +102,7 @@ NSUInteger TSInfoMessageSchemaVersion = 1;
     OWSAssertDebug(thread);
     OWSAssertDebug(recipientId);
 
+    // MJK TODO - remove senderTimestamp
     return [[self alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                   inThread:thread
                                messageType:TSInfoMessageUserNotRegistered

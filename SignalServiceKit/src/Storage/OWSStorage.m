@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSStorage.h"
@@ -410,13 +410,39 @@ NSString *const kNSUserDefaults_DatabaseExtensionVersionMap = @"kNSUserDefaults_
     return OWSPrimaryStorage.sharedManager.areAllRegistrationsComplete;
 }
 
-- (BOOL)tryToLoadDatabase
++ (YapDatabaseOptions *)defaultDatabaseOptions
 {
-    __weak OWSStorage *weakSelf = self;
-
     YapDatabaseOptions *options = [[YapDatabaseOptions alloc] init];
     options.corruptAction = YapDatabaseCorruptAction_Fail;
     options.enableMultiProcessSupport = YES;
+
+    // We leave a portion of the header decrypted so that iOS will recognize the file
+    // as a SQLite database. Otherwise, because the database lives in a shared data container,
+    // and our usage of sqlite's write-ahead logging retains a lock on the database, the OS
+    // would kill the app/share extension as soon as it is backgrounded.
+    options.cipherUnencryptedHeaderLength = kSqliteHeaderLength;
+
+    // If we want to migrate to the new cipher defaults in SQLCipher4+ we'll need to do a one time
+    // migration. See the `PRAGMA cipher_migrate` documentation for details.
+    // https://www.zetetic.net/sqlcipher/sqlcipher-api/#cipher_migrate
+    options.legacyCipherCompatibilityVersion = 3;
+
+    // If any of these asserts fails, we need to verify and update
+    // OWSDatabaseConverter which assumes the values of these options.
+    OWSAssertDebug(options.cipherDefaultkdfIterNumber == 0);
+    OWSAssertDebug(options.kdfIterNumber == 0);
+    OWSAssertDebug(options.cipherPageSize == 0);
+    OWSAssertDebug(options.pragmaPageSize == 0);
+    OWSAssertDebug(options.pragmaJournalSizeLimit == 0);
+    OWSAssertDebug(options.pragmaMMapSize == 0);
+
+    return options;
+}
+
+- (BOOL)tryToLoadDatabase
+{
+    __weak OWSStorage *weakSelf = self;
+    YapDatabaseOptions *options = [self.class defaultDatabaseOptions];
     options.cipherKeySpecBlock = ^{
         // NOTE: It's critical that we don't capture a reference to self
         // (e.g. by using OWSAssertDebug()) or this database will contain a
@@ -431,21 +457,6 @@ NSString *const kNSUserDefaults_DatabaseExtensionVersionMap = @"kNSUserDefaults_
         OWSCAssertDebug(databaseKeySpec.length == kSQLCipherKeySpecLength);
         return databaseKeySpec;
     };
-
-    // We leave a portion of the header decrypted so that iOS will recognize the file
-    // as a SQLite database. Otherwise, because the database lives in a shared data container,
-    // and our usage of sqlite's write-ahead logging retains a lock on the database, the OS
-    // would kill the app/share extension as soon as it is backgrounded.
-    options.cipherUnencryptedHeaderLength = kSqliteHeaderLength;
-
-    // If any of these asserts fails, we need to verify and update
-    // OWSDatabaseConverter which assumes the values of these options.
-    OWSAssertDebug(options.cipherDefaultkdfIterNumber == 0);
-    OWSAssertDebug(options.kdfIterNumber == 0);
-    OWSAssertDebug(options.cipherPageSize == 0);
-    OWSAssertDebug(options.pragmaPageSize == 0);
-    OWSAssertDebug(options.pragmaJournalSizeLimit == 0);
-    OWSAssertDebug(options.pragmaMMapSize == 0);
 
     // Sanity checking elsewhere asserts we should only regenerate key specs when
     // there is no existing database, so rather than lazily generate in the cipherKeySpecBlock

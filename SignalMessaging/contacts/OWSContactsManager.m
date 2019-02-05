@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSContactsManager.h"
@@ -10,13 +10,13 @@
 #import "OWSUserProfile.h"
 #import "ViewControllerUtils.h"
 #import <SignalCoreKit/NSDate+OWS.h>
-#import <SignalCoreKit/NSString+SSK.h>
 #import <SignalCoreKit/iOSVersions.h>
 #import <SignalMessaging/SignalMessaging-Swift.h>
 #import <SignalMessaging/UIColor+OWS.h>
 #import <SignalMessaging/UIFont+OWS.h>
 #import <SignalServiceKit/ContactsUpdater.h>
 #import <SignalServiceKit/NSNotificationCenter+OWS.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/OWSError.h>
 #import <SignalServiceKit/OWSPrimaryStorage.h>
 #import <SignalServiceKit/PhoneNumber.h>
@@ -616,7 +616,6 @@ NSString *const OWSContactsManagerKeyNextFullIntersectionDate = @"OWSContactsMan
 
     if (!signalAccount) {
         // search system contacts for no-longer-registered signal users, for which there will be no SignalAccount
-        OWSLogDebug(@"no signal account");
         Contact *_Nullable nonSignalContact = self.allContactsMap[recipientId];
         if (!nonSignalContact) {
             return nil;

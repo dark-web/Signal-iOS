@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "ConversationViewItem.h"
@@ -9,10 +9,9 @@
 #import "OWSMessageHeaderView.h"
 #import "OWSSystemMessageCell.h"
 #import "Signal-Swift.h"
-#import <AssetsLibrary/AssetsLibrary.h>
-#import <SignalMessaging/NSString+OWS.h>
 #import <SignalMessaging/OWSUnreadIndicator.h>
 #import <SignalServiceKit/NSData+Image.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/OWSContact.h>
 #import <SignalServiceKit/TSInteraction.h>
 
@@ -64,6 +63,16 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType)
 
     return self;
 }
+
+- (BOOL)isFailedDownload
+{
+    if (![self.attachment isKindOfClass:[TSAttachmentPointer class]]) {
+        return NO;
+    }
+    TSAttachmentPointer *attachmentPointer = (TSAttachmentPointer *)self.attachment;
+    return attachmentPointer.state == TSAttachmentPointerStateFailed;
+}
+
 @end
 
 #pragma mark -
@@ -88,6 +97,8 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType)
 @property (nonatomic, nullable) TSAttachmentStream *attachmentStream;
 @property (nonatomic, nullable) TSAttachmentPointer *attachmentPointer;
 @property (nonatomic, nullable) ContactShareViewModel *contactShare;
+@property (nonatomic, nullable) OWSLinkPreview *linkPreview;
+@property (nonatomic, nullable) TSAttachment *linkPreviewAttachment;
 @property (nonatomic, nullable) NSArray<ConversationMediaAlbumItem *> *mediaAlbumItems;
 @property (nonatomic, nullable) NSString *systemMessageText;
 @property (nonatomic, nullable) TSThread *incomingMessageAuthorThread;
@@ -149,10 +160,14 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType)
     self.displayableBodyText = nil;
     self.attachmentStream = nil;
     self.attachmentPointer = nil;
+    self.mediaAlbumItems = nil;
     self.displayableQuotedText = nil;
     self.quotedReply = nil;
+    self.contactShare = nil;
     self.systemMessageText = nil;
-    self.mediaAlbumItems = nil;
+    self.authorConversationColorName = nil;
+    self.linkPreview = nil;
+    self.linkPreviewAttachment = nil;
 
     [self updateAuthorConversationColorNameWithTransaction:transaction];
 
@@ -284,6 +299,10 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType)
 - (void)clearCachedLayoutState
 {
     self.cachedCellSize = nil;
+}
+
+- (BOOL)hasCachedLayoutState {
+    return self.cachedCellSize != nil;
 }
 
 - (CGSize)cellSize
@@ -647,6 +666,28 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType)
         OWSAssertDebug(self.displayableBodyText);
     }
 
+    if (self.hasBodyText && attachment == nil && message.linkPreview) {
+        self.linkPreview = message.linkPreview;
+        if (message.linkPreview.imageAttachmentId.length > 0) {
+            TSAttachment *_Nullable linkPreviewAttachment =
+                [TSAttachment fetchObjectWithUniqueID:message.linkPreview.imageAttachmentId transaction:transaction];
+            if (!linkPreviewAttachment) {
+                OWSFailDebug(@"Could not load link preview image attachment.");
+            } else if (!linkPreviewAttachment.isImage) {
+                OWSFailDebug(@"Link preview attachment isn't an image.");
+            } else if ([linkPreviewAttachment isKindOfClass:[TSAttachmentStream class]]) {
+                TSAttachmentStream *attachmentStream = (TSAttachmentStream *)linkPreviewAttachment;
+                if (!attachmentStream.isValidImage) {
+                    OWSFailDebug(@"Link preview image attachment isn't valid.");
+                } else {
+                    self.linkPreviewAttachment = linkPreviewAttachment;
+                }
+            } else {
+                self.linkPreviewAttachment = linkPreviewAttachment;
+            }
+        }
+    }
+
     if (self.messageCellType == OWSMessageCellType_Unknown) {
         // Messages of unknown type (including messages with missing attachments)
         // are rendered like empty text messages, but without any interactivity.
@@ -1006,39 +1047,57 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType)
             break;
         }
         case OWSMessageCellType_MediaAlbum: {
-            // TODO: Use PHPhotoLibrary.
-            ALAssetsLibrary *library = [[ALAssetsLibrary alloc] init];
-            for (ConversationMediaAlbumItem *mediaAlbumItem in self.mediaAlbumItems) {
-                if (!mediaAlbumItem.attachmentStream) {
-                    continue;
-                }
-                if (!mediaAlbumItem.attachmentStream.isValidVisualMedia) {
-                    continue;
-                }
-                if (mediaAlbumItem.attachmentStream.isImage || mediaAlbumItem.attachmentStream.isAnimated) {
-                    NSData *data = [NSData dataWithContentsOfURL:[mediaAlbumItem.attachmentStream originalMediaURL]];
-                    if (!data) {
-                        OWSFailDebug(@"Could not load image data");
-                        continue;
-                    }
-                    [library writeImageDataToSavedPhotosAlbum:data
-                                                     metadata:nil
-                                              completionBlock:^(NSURL *assetURL, NSError *error) {
-                                                  if (error) {
-                                                      OWSLogWarn(@"Error saving image to photo album: %@", error);
-                                                  }
-                                              }];
-                }
-                if (mediaAlbumItem.attachmentStream.isVideo) {
-                    if (UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(
-                            mediaAlbumItem.attachmentStream.originalFilePath)) {
-                        UISaveVideoAtPathToSavedPhotosAlbum(
-                            mediaAlbumItem.attachmentStream.originalFilePath, self, nil, nil);
-                    }
-                }
-            }
+            [self saveMediaAlbumItems];
+            break;
         }
     }
+}
+
+- (void)saveMediaAlbumItems
+{
+    // We need to do these writes serially to avoid "write busy" errors
+    // from too many concurrent asset saves.
+    [self saveMediaAlbumItems:[self.mediaAlbumItems mutableCopy]];
+}
+
+- (void)saveMediaAlbumItems:(NSMutableArray<ConversationMediaAlbumItem *> *)mediaAlbumItems
+{
+    if (mediaAlbumItems.count < 1) {
+        return;
+    }
+    ConversationMediaAlbumItem *mediaAlbumItem = mediaAlbumItems.firstObject;
+    [mediaAlbumItems removeObjectAtIndex:0];
+
+    if (!mediaAlbumItem.attachmentStream || !mediaAlbumItem.attachmentStream.isValidVisualMedia) {
+        // Skip this item.
+    } else if (mediaAlbumItem.attachmentStream.isImage || mediaAlbumItem.attachmentStream.isAnimated) {
+        [[PHPhotoLibrary sharedPhotoLibrary]
+            performChanges:^{
+                [PHAssetChangeRequest
+                    creationRequestForAssetFromImageAtFileURL:mediaAlbumItem.attachmentStream.originalMediaURL];
+            }
+            completionHandler:^(BOOL success, NSError *error) {
+                if (error || !success) {
+                    OWSFailDebug(@"Image save failed: %@", error);
+                }
+                [self saveMediaAlbumItems:mediaAlbumItems];
+            }];
+        return;
+    } else if (mediaAlbumItem.attachmentStream.isVideo) {
+        [[PHPhotoLibrary sharedPhotoLibrary]
+            performChanges:^{
+                [PHAssetChangeRequest
+                    creationRequestForAssetFromVideoAtFileURL:mediaAlbumItem.attachmentStream.originalMediaURL];
+            }
+            completionHandler:^(BOOL success, NSError *error) {
+                if (error || !success) {
+                    OWSFailDebug(@"Video save failed: %@", error);
+                }
+                [self saveMediaAlbumItems:mediaAlbumItems];
+            }];
+        return;
+    }
+    return [self saveMediaAlbumItems:mediaAlbumItems];
 }
 
 - (void)deleteAction
@@ -1076,11 +1135,8 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType)
     OWSAssertDebug(self.mediaAlbumItems.count > 0);
 
     for (ConversationMediaAlbumItem *mediaAlbumItem in self.mediaAlbumItems) {
-        if ([mediaAlbumItem.attachment isKindOfClass:[TSAttachmentPointer class]]) {
-            TSAttachmentPointer *attachmentPointer = (TSAttachmentPointer *)mediaAlbumItem.attachment;
-            if (attachmentPointer.state == TSAttachmentPointerStateFailed) {
-                return YES;
-            }
+        if (mediaAlbumItem.isFailedDownload) {
+            return YES;
         }
     }
     return NO;

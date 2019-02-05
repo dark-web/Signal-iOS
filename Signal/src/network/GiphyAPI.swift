@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import Foundation
@@ -29,15 +29,14 @@ extension GiphyError: LocalizedError {
 // They vary in content size (i.e. width,  height), 
 // format (.jpg, .gif, .mp4, webp, etc.),
 // quality, etc.
-@objc class GiphyRendition: NSObject {
+@objc class GiphyRendition: ProxiedContentAssetDescription {
     let format: GiphyFormat
     let name: String
     let width: UInt
     let height: UInt
     let fileSize: UInt
-    let url: NSURL
 
-    init(format: GiphyFormat,
+    init?(format: GiphyFormat,
          name: String,
          width: UInt,
          height: UInt,
@@ -48,10 +47,12 @@ extension GiphyError: LocalizedError {
         self.width = width
         self.height = height
         self.fileSize = fileSize
-        self.url = url
+
+        let fileExtension = GiphyRendition.fileExtension(forFormat: format)
+        super.init(url: url, fileExtension: fileExtension)
     }
 
-    public var fileExtension: String {
+    private class func fileExtension(forFormat format: GiphyFormat) -> String {
         switch format {
         case .gif:
             return "gif"
@@ -280,32 +281,8 @@ extension GiphyError: LocalizedError {
 
     private let kGiphyBaseURL = "https://api.giphy.com/"
 
-    public class func giphySessionConfiguration() -> URLSessionConfiguration {
-        let configuration = URLSessionConfiguration.ephemeral
-        let proxyHost = "giphy-proxy-production.whispersystems.org"
-        let proxyPort = 80
-        configuration.connectionProxyDictionary = [
-            "HTTPEnable": 1,
-            "HTTPProxy": proxyHost,
-            "HTTPPort": proxyPort,
-            "HTTPSEnable": 1,
-            "HTTPSProxy": proxyHost,
-            "HTTPSPort": proxyPort
-        ]
-        return configuration
-    }
-
     private func giphyAPISessionManager() -> AFHTTPSessionManager? {
-        guard let baseUrl = NSURL(string: kGiphyBaseURL) else {
-            Logger.error("Invalid base URL.")
-            return nil
-        }
-        let sessionManager = AFHTTPSessionManager(baseURL: baseUrl as URL,
-                                                  sessionConfiguration: GiphyAPI.giphySessionConfiguration())
-        sessionManager.requestSerializer = AFJSONRequestSerializer()
-        sessionManager.responseSerializer = AFJSONResponseSerializer()
-
-        return sessionManager
+        return ContentProxy.jsonSessionManager(baseUrl: kGiphyBaseURL)
     }
 
     // MARK: Search
@@ -334,7 +311,7 @@ extension GiphyError: LocalizedError {
         let urlString = "/v1/gifs/search?api_key=\(kGiphyApiKey)&offset=\(kGiphyPageOffset)&limit=\(kGiphyPageSize)&q=\(queryEncoded)"
 
         sessionManager.get(urlString,
-                           parameters: {},
+                           parameters: [String: AnyObject](),
                            progress: nil,
                            success: { _, value in
                             Logger.error("search request succeeded")

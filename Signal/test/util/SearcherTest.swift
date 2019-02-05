@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import XCTest
@@ -230,7 +230,7 @@ class ConversationSearcherTest: SignalBaseTest {
     }
 
     func testSearchMessageByBodyContent() {
-        var resultSet: SearchResultSet = .empty
+        var resultSet: HomeScreenSearchResultSet = .empty
 
         resultSet = getResultSet(searchText: "Hello Alice")
         XCTAssertEqual(1, resultSet.messages.count)
@@ -243,7 +243,7 @@ class ConversationSearcherTest: SignalBaseTest {
     }
 
     func testSearchEdgeCases() {
-        var resultSet: SearchResultSet = .empty
+        var resultSet: HomeScreenSearchResultSet = .empty
 
         resultSet = getResultSet(searchText: "Hello Alice")
         XCTAssertEqual(1, resultSet.messages.count)
@@ -294,7 +294,9 @@ class ConversationSearcherTest: SignalBaseTest {
         XCTAssertEqual(["My fax is: 222-333-4444"], bodies(forMessageResults: resultSet.messages))
     }
 
-    func bodies(forMessageResults messageResults: [ConversationSearchResult]) -> [String] {
+    // MARK: Helpers
+
+    func bodies<T>(forMessageResults messageResults: [ConversationSearchResult<T>]) -> [String] {
         var result = [String]()
 
         self.dbConnection.read { transaction in
@@ -322,17 +324,15 @@ class ConversationSearcherTest: SignalBaseTest {
         return result.sorted()
     }
 
-    // MARK: Helpers
-
     private func searchConversations(searchText: String) -> [ThreadViewModel] {
         let results = getResultSet(searchText: searchText)
         return results.conversations.map { $0.thread }
     }
 
-    private func getResultSet(searchText: String) -> SearchResultSet {
-        var results: SearchResultSet!
+    private func getResultSet(searchText: String) -> HomeScreenSearchResultSet {
+        var results: HomeScreenSearchResultSet!
         self.dbConnection.read { transaction in
-            results = self.searcher.results(searchText: searchText, transaction: transaction, contactsManager: SSKEnvironment.shared.contactsManager)
+            results = self.searcher.searchForHomeScreen(searchText: searchText, transaction: transaction, contactsManager: SSKEnvironment.shared.contactsManager)
         }
         return results
     }

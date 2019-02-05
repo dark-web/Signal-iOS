@@ -1,8 +1,9 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import <PureLayout/PureLayout.h>
+#import <SignalServiceKit/OWSMath.h>
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -149,60 +150,11 @@ CGFloat ScaleFromIPhone5(CGFloat iPhone5Value);
 
 - (UIView *)addBackgroundViewWithBackgroundColor:(UIColor *)backgroundColor;
 
+- (UIView *)addBorderViewWithColor:(UIColor *)color strokeWidth:(CGFloat)strokeWidth cornerRadius:(CGFloat)cornerRadius;
+
 @end
 
 #pragma mark - Macros
-
-CG_INLINE CGSize CGSizeCeil(CGSize size)
-{
-    return CGSizeMake((CGFloat)ceil(size.width), (CGFloat)ceil(size.height));
-}
-
-CG_INLINE CGSize CGSizeFloor(CGSize size)
-{
-    return CGSizeMake((CGFloat)floor(size.width), (CGFloat)floor(size.height));
-}
-
-CG_INLINE CGSize CGSizeRound(CGSize size)
-{
-    return CGSizeMake((CGFloat)round(size.width), (CGFloat)round(size.height));
-}
-
-CG_INLINE CGSize CGSizeMax(CGSize size1, CGSize size2)
-{
-    return CGSizeMake(MAX(size1.width, size2.width), MAX(size1.height, size2.height));
-}
-
-CG_INLINE CGPoint CGPointAdd(CGPoint left, CGPoint right)
-{
-    return CGPointMake(left.x + right.x, left.y + right.y);
-}
-
-CG_INLINE CGPoint CGPointSubtract(CGPoint left, CGPoint right)
-{
-    return CGPointMake(left.x - right.x, left.y - right.y);
-}
-
-CG_INLINE CGPoint CGPointScale(CGPoint point, CGFloat factor)
-{
-    return CGPointMake(point.x * factor, point.y * factor);
-}
-
-CG_INLINE CGFloat CGPointDistance(CGPoint left, CGPoint right)
-{
-    CGPoint delta = CGPointSubtract(left, right);
-    return sqrt(delta.x * delta.x + delta.y * delta.y);
-}
-
-CG_INLINE CGSize CGSizeScale(CGSize size, CGFloat factor)
-{
-    return CGSizeMake(size.width * factor, size.height * factor);
-}
-
-CG_INLINE CGSize CGSizeAdd(CGSize left, CGSize right)
-{
-    return CGSizeMake(left.width + right.width, left.height + right.height);
-}
 
 CGFloat CGHairlineWidth(void);
 

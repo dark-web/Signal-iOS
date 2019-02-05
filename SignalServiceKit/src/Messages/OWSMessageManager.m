@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSMessageManager.h"
@@ -8,6 +8,7 @@
 #import "ContactsManagerProtocol.h"
 #import "MimeTypeUtil.h"
 #import "NSNotificationCenter+OWS.h"
+#import "NSString+SSK.h"
 #import "NotificationsProtocol.h"
 #import "OWSAttachmentDownloads.h"
 #import "OWSBlockingManager.h"
@@ -47,7 +48,6 @@
 #import "TSQuotedMessage.h"
 #import <SignalCoreKit/Cryptography.h>
 #import <SignalCoreKit/NSDate+OWS.h>
-#import <SignalCoreKit/NSString+SSK.h>
 #import <SignalServiceKit/SignalRecipient.h>
 #import <SignalServiceKit/SignalServiceKit-Swift.h>
 #import <YapDatabase/YapDatabase.h>
@@ -511,7 +511,7 @@ NS_ASSUME_NONNULL_BEGIN
 
         if (groupThread) {
             if (dataMessage.group.type != SSKProtoGroupContextTypeUpdate) {
-                if (![groupThread.groupModel.groupMemberIds containsObject:self.tsAccountManager.localNumber]) {
+                if (!groupThread.isLocalUserInGroup) {
                     OWSLogInfo(@"Ignoring messages for left group.");
                     return;
                 }
@@ -705,7 +705,7 @@ NS_ASSUME_NONNULL_BEGIN
     if (typingMessage.hasGroupID) {
         TSGroupThread *groupThread = [TSGroupThread threadWithGroupId:typingMessage.groupID transaction:transaction];
 
-        if (![groupThread.groupModel.groupMemberIds containsObject:self.tsAccountManager.localNumber]) {
+        if (!groupThread.isLocalUserInGroup) {
             OWSLogInfo(@"Ignoring messages for left group.");
             return;
         }
@@ -978,6 +978,7 @@ NS_ASSUME_NONNULL_BEGIN
 
     TSContactThread *thread = [TSContactThread getOrCreateThreadWithContactId:envelope.source transaction:transaction];
 
+    // MJK TODO - safe to remove senderTimestamp
     [[[TSInfoMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                      inThread:thread
                                   messageType:TSInfoMessageTypeSessionDidEnd] saveWithTransaction:transaction];
@@ -1026,6 +1027,8 @@ NS_ASSUME_NONNULL_BEGIN
     OWSAssertDebug(disappearingMessagesConfiguration);
     [disappearingMessagesConfiguration saveWithTransaction:transaction];
     NSString *name = [self.contactsManager displayNameForPhoneIdentifier:envelope.source transaction:transaction];
+
+    // MJK TODO - safe to remove senderTimestamp
     OWSDisappearingConfigurationUpdateInfoMessage *message =
         [[OWSDisappearingConfigurationUpdateInfoMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                           thread:thread
@@ -1132,8 +1135,7 @@ NS_ASSUME_NONNULL_BEGIN
     }
 
     // Ensure we are in the group.
-    NSString *localNumber = self.tsAccountManager.localNumber;
-    if (![gThread.groupModel.groupMemberIds containsObject:localNumber]) {
+    if (!gThread.isLocalUserInGroup) {
         OWSLogWarn(@"Ignoring 'Request Group Info' message for group we no longer belong to.");
         return;
     }
@@ -1151,16 +1153,18 @@ NS_ASSUME_NONNULL_BEGIN
     [message updateWithSendingToSingleGroupRecipient:envelope.source transaction:transaction];
 
     if (gThread.groupModel.groupImage) {
-        NSData *data = UIImagePNGRepresentation(gThread.groupModel.groupImage);
-        DataSource *_Nullable dataSource = [DataSourceValue dataSourceWithData:data fileExtension:@"png"];
-        [self.messageSenderJobQueue addMediaMessage:message
-                                         dataSource:dataSource
-                                        contentType:OWSMimeTypeImagePng
-                                     sourceFilename:nil
-                                            caption:nil
-                                     albumMessageId:nil
-                              isTemporaryAttachment:YES];
-
+        NSData *_Nullable data = UIImagePNGRepresentation(gThread.groupModel.groupImage);
+        OWSAssertDebug(data);
+        if (data) {
+            DataSource *_Nullable dataSource = [DataSourceValue dataSourceWithData:data fileExtension:@"png"];
+            [self.messageSenderJobQueue addMediaMessage:message
+                                             dataSource:dataSource
+                                            contentType:OWSMimeTypeImagePng
+                                         sourceFilename:nil
+                                                caption:nil
+                                         albumMessageId:nil
+                                  isTemporaryAttachment:YES];
+        }
     } else {
         [self.messageSenderJobQueue addMessage:message transaction:transaction];
     }
@@ -1223,8 +1227,6 @@ NS_ASSUME_NONNULL_BEGIN
                 TSGroupThread *newGroupThread =
                     [TSGroupThread getOrCreateThreadWithGroupId:groupId transaction:transaction];
 
-
-                uint64_t now = [NSDate ows_millisecondTimeStamp];
                 TSGroupModel *newGroupModel = [[TSGroupModel alloc] initWithTitle:dataMessage.group.name
                                                                         memberIds:newMemberIds.allObjects
                                                                             image:oldGroupThread.groupModel.groupImage
@@ -1234,21 +1236,18 @@ NS_ASSUME_NONNULL_BEGIN
                 newGroupThread.groupModel = newGroupModel;
                 [newGroupThread saveWithTransaction:transaction];
 
-                TSInfoMessage *infoMessage = [[TSInfoMessage alloc] initWithTimestamp:now
+                [[OWSDisappearingMessagesJob sharedJob] becomeConsistentWithDisappearingDuration:dataMessage.expireTimer
+                                                                                          thread:newGroupThread
+                                                                      createdByRemoteRecipientId:nil
+                                                                          createdInExistingGroup:YES
+                                                                                     transaction:transaction];
+
+                // MJK TODO - should be safe to remove senderTimestamp
+                TSInfoMessage *infoMessage = [[TSInfoMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                              inThread:newGroupThread
                                                                           messageType:TSInfoMessageTypeGroupUpdate
                                                                         customMessage:updateGroupInfo];
                 [infoMessage saveWithTransaction:transaction];
-
-                if (dataMessage.hasExpireTimer && dataMessage.expireTimer > 0) {
-                    [[OWSDisappearingMessagesJob sharedJob]
-                        becomeConsistentWithDisappearingDuration:dataMessage.expireTimer
-                                                          thread:newGroupThread
-                                           appearBeforeTimestamp:now
-                                      createdByRemoteContactName:nil
-                                          createdInExistingGroup:YES
-                                                     transaction:transaction];
-                }
 
                 return nil;
             }
@@ -1265,6 +1264,7 @@ NS_ASSUME_NONNULL_BEGIN
                     [self.contactsManager displayNameForPhoneIdentifier:envelope.source transaction:transaction];
                 NSString *updateGroupInfo =
                     [NSString stringWithFormat:NSLocalizedString(@"GROUP_MEMBER_LEFT", @""), nameString];
+                // MJK TODO - should be safe to remove senderTimestamp
                 [[[TSInfoMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                  inThread:oldGroupThread
                                               messageType:TSInfoMessageTypeGroupUpdate
@@ -1277,15 +1277,32 @@ NS_ASSUME_NONNULL_BEGIN
                     return nil;
                 }
 
+                [[OWSDisappearingMessagesJob sharedJob] becomeConsistentWithDisappearingDuration:dataMessage.expireTimer
+                                                                                          thread:oldGroupThread
+                                                                      createdByRemoteRecipientId:envelope.source
+                                                                          createdInExistingGroup:NO
+                                                                                     transaction:transaction];
+
                 TSQuotedMessage *_Nullable quotedMessage = [TSQuotedMessage quotedMessageForDataMessage:dataMessage
                                                                                                  thread:oldGroupThread
                                                                                             transaction:transaction];
+
+                NSError *linkPreviewError;
+                OWSLinkPreview *_Nullable linkPreview =
+                    [OWSLinkPreview buildValidatedLinkPreviewWithDataMessage:dataMessage
+                                                                        body:body
+                                                                 transaction:transaction
+                                                                       error:&linkPreviewError];
+                if (linkPreviewError && ![OWSLinkPreview isNoPreviewError:linkPreviewError]) {
+                    OWSLogError(@"linkPreviewError: %@", linkPreviewError);
+                }
 
                 OWSLogDebug(@"incoming message from: %@ for group: %@ with timestamp: %lu",
                     envelopeAddress(envelope),
                     groupId,
                     (unsigned long)timestamp);
 
+                // Legit usage of senderTimestamp when creating an incoming group message record
                 TSIncomingMessage *incomingMessage =
                     [[TSIncomingMessage alloc] initIncomingMessageWithTimestamp:timestamp
                                                                        inThread:oldGroupThread
@@ -1296,6 +1313,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                                expiresInSeconds:dataMessage.expireTimer
                                                                   quotedMessage:quotedMessage
                                                                    contactShare:contact
+                                                                    linkPreview:linkPreview
                                                                 serverTimestamp:serverTimestamp
                                                                 wasReceivedByUD:wasReceivedByUD];
 
@@ -1332,10 +1350,27 @@ NS_ASSUME_NONNULL_BEGIN
         TSContactThread *thread =
             [TSContactThread getOrCreateThreadWithContactId:envelope.source transaction:transaction];
 
+        [[OWSDisappearingMessagesJob sharedJob] becomeConsistentWithDisappearingDuration:dataMessage.expireTimer
+                                                                                  thread:thread
+                                                              createdByRemoteRecipientId:envelope.source
+                                                                  createdInExistingGroup:NO
+                                                                             transaction:transaction];
+
         TSQuotedMessage *_Nullable quotedMessage = [TSQuotedMessage quotedMessageForDataMessage:dataMessage
                                                                                          thread:thread
                                                                                     transaction:transaction];
 
+        NSError *linkPreviewError;
+        OWSLinkPreview *_Nullable linkPreview =
+            [OWSLinkPreview buildValidatedLinkPreviewWithDataMessage:dataMessage
+                                                                body:body
+                                                         transaction:transaction
+                                                               error:&linkPreviewError];
+        if (linkPreviewError && ![OWSLinkPreview isNoPreviewError:linkPreviewError]) {
+            OWSLogError(@"linkPreviewError: %@", linkPreviewError);
+        }
+
+        // Legit usage of senderTimestamp when creating incoming message from received envelope
         TSIncomingMessage *incomingMessage =
             [[TSIncomingMessage alloc] initIncomingMessageWithTimestamp:timestamp
                                                                inThread:thread
@@ -1346,6 +1381,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                        expiresInSeconds:dataMessage.expireTimer
                                                           quotedMessage:quotedMessage
                                                            contactShare:contact
+                                                            linkPreview:linkPreview
                                                         serverTimestamp:serverTimestamp
                                                         wasReceivedByUD:wasReceivedByUD];
 
@@ -1401,62 +1437,53 @@ NS_ASSUME_NONNULL_BEGIN
         [incomingMessage markAsReadAtTimestamp:envelope.timestamp sendReadReceipt:NO transaction:transaction];
     }
 
-    TSQuotedMessage *_Nullable quotedMessage = incomingMessage.quotedMessage;
-    if (quotedMessage && quotedMessage.thumbnailAttachmentPointerId) {
-        // We weren't able to derive a local thumbnail, so we'll fetch the referenced attachment.
-        TSAttachmentPointer *attachmentPointer =
-            [TSAttachmentPointer fetchObjectWithUniqueID:quotedMessage.thumbnailAttachmentPointerId
-                                             transaction:transaction];
+    // Download the "non-message body" attachments.
+    NSMutableArray<NSString *> *otherAttachmentIds = [incomingMessage.allAttachmentIds mutableCopy];
+    if (incomingMessage.attachmentIds) {
+        [otherAttachmentIds removeObjectsInArray:incomingMessage.attachmentIds];
+    }
+    for (NSString *attachmentId in otherAttachmentIds) {
+        TSAttachment *_Nullable attachment =
+            [TSAttachment fetchObjectWithUniqueID:attachmentId transaction:transaction];
+        if (![attachment isKindOfClass:[TSAttachmentPointer class]]) {
+            OWSLogInfo(@"Skipping attachment stream.");
+            continue;
+        }
+        TSAttachmentPointer *_Nullable attachmentPointer = (TSAttachmentPointer *)attachment;
 
-        if ([attachmentPointer isKindOfClass:[TSAttachmentPointer class]]) {
-            OWSLogDebug(@"downloading thumbnail for message: %lu", (unsigned long)incomingMessage.timestamp);
-            [self.attachmentDownloads downloadAttachmentPointer:attachmentPointer
-                success:^(NSArray<TSAttachmentStream *> *attachmentStreams) {
-                    OWSAssertDebug(attachmentStreams.count == 1);
-                    TSAttachmentStream *attachmentStream = attachmentStreams.firstObject;
-                    [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
+        OWSLogDebug(@"Downloading attachment for message: %lu", (unsigned long)incomingMessage.timestamp);
+
+        // Use a separate download for each attachment so that:
+        //
+        // * We update the message as each comes in.
+        // * Failures don't interfere with successes.
+        [self.attachmentDownloads downloadAttachmentPointer:attachmentPointer
+            success:^(NSArray<TSAttachmentStream *> *attachmentStreams) {
+                [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
+                    TSAttachmentStream *_Nullable attachmentStream = attachmentStreams.firstObject;
+                    OWSAssertDebug(attachmentStream);
+                    if (attachmentStream && incomingMessage.quotedMessage.thumbnailAttachmentPointerId.length > 0 &&
+                        [attachmentStream.uniqueId
+                            isEqualToString:incomingMessage.quotedMessage.thumbnailAttachmentPointerId]) {
                         [incomingMessage setQuotedMessageThumbnailAttachmentStream:attachmentStream];
                         [incomingMessage saveWithTransaction:transaction];
-                    }];
-                }
-                failure:^(NSError *error) {
-                    OWSLogWarn(@"failed to fetch thumbnail for message: %lu with error: %@",
-                        (unsigned long)incomingMessage.timestamp,
-                        error);
-                }];
-        }
-    }
-
-    OWSContact *_Nullable contact = incomingMessage.contactShare;
-    if (contact && contact.avatarAttachmentId) {
-        TSAttachmentPointer *attachmentPointer =
-            [TSAttachmentPointer fetchObjectWithUniqueID:contact.avatarAttachmentId transaction:transaction];
-
-        if (![attachmentPointer isKindOfClass:[TSAttachmentPointer class]]) {
-            OWSFailDebug(@"avatar attachmentPointer was unexpectedly nil");
-        } else {
-            OWSLogDebug(@"downloading contact avatar for message: %lu", (unsigned long)incomingMessage.timestamp);
-
-            [self.attachmentDownloads downloadAttachmentPointer:attachmentPointer
-                success:^(NSArray<TSAttachmentStream *> *attachmentStreams) {
-                    [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
+                    } else {
+                        // We touch the message to trigger redraw of any views displaying it,
+                        // since the attachment might be a contact avatar, etc.
                         [incomingMessage touchWithTransaction:transaction];
-                    }];
-                }
-                failure:^(NSError *error) {
-                    OWSLogWarn(@"failed to fetch contact avatar for message: %lu with error: %@",
-                        (unsigned long)incomingMessage.timestamp,
-                        error);
+                    }
                 }];
-        }
+            }
+            failure:^(NSError *error) {
+                OWSLogWarn(@"failed to download attachment for message: %lu with error: %@",
+                    (unsigned long)incomingMessage.timestamp,
+                    error);
+            }];
     }
+
     // In case we already have a read receipt for this new message (this happens sometimes).
     [OWSReadReceiptManager.sharedManager applyEarlyReadReceiptsForIncomingMessage:incomingMessage
                                                                       transaction:transaction];
-
-    [[OWSDisappearingMessagesJob sharedJob] becomeConsistentWithConfigurationForMessage:incomingMessage
-                                                                        contactsManager:self.contactsManager
-                                                                            transaction:transaction];
 
     // Update thread preview in inbox
     [thread touchWithTransaction:transaction];

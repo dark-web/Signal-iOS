@@ -9,13 +9,13 @@
 #import <SignalCoreKit/Cryptography.h>
 #import <SignalCoreKit/NSData+OWS.h>
 #import <SignalCoreKit/NSDate+OWS.h>
-#import <SignalCoreKit/NSString+SSK.h>
 #import <SignalMessaging/SignalMessaging-Swift.h>
 #import <SignalServiceKit/AppContext.h>
 #import <SignalServiceKit/AppReadiness.h>
 #import <SignalServiceKit/MIMETypeUtil.h>
 #import <SignalServiceKit/NSData+Image.h>
 #import <SignalServiceKit/NSNotificationCenter+OWS.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/OWSBlockingManager.h>
 #import <SignalServiceKit/OWSFileSystem.h>
 #import <SignalServiceKit/OWSMessageSender.h>
@@ -1494,6 +1494,7 @@ typedef void (^ProfileManagerFailureBlock)(NSError *error);
         return;
     }
 
+    // MJK TODO - should be safe to remove this senderTimestamp
     OWSProfileKeyMessage *message =
         [[OWSProfileKeyMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp] inThread:thread];
     [OWSProfileManager.sharedManager addThreadToProfileWhitelist:thread];

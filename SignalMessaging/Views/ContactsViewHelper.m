@@ -1,15 +1,15 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "ContactsViewHelper.h"
 #import "Environment.h"
 #import "UIUtil.h"
-#import <SignalCoreKit/NSString+SSK.h>
 #import <SignalMessaging/OWSProfileManager.h>
 #import <SignalMessaging/SignalMessaging-Swift.h>
 #import <SignalServiceKit/AppContext.h>
 #import <SignalServiceKit/Contact.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/OWSBlockingManager.h>
 #import <SignalServiceKit/PhoneNumber.h>
 #import <SignalServiceKit/SignalAccount.h>
@@ -206,7 +206,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSArray<SignalAccount *> *)signalAccountsMatchingSearchString:(NSString *)searchText
 {
-    return [self.conversationSearcher filterSignalAccounts:self.signalAccounts withSearchText:searchText];
+    // Check for matches against "Note to Self".
+    NSMutableArray<SignalAccount *> *signalAccountsToSearch = [self.signalAccounts mutableCopy];
+    SignalAccount *selfAccount = [[SignalAccount alloc] initWithRecipientId:self.localNumber];
+    [signalAccountsToSearch addObject:selfAccount];
+    return [self.conversationSearcher filterSignalAccounts:signalAccountsToSearch
+                                            withSearchText:searchText];
 }
 
 - (BOOL)doesContact:(Contact *)contact matchSearchTerm:(NSString *)searchTerm
@@ -258,8 +263,37 @@ NS_ASSUME_NONNULL_BEGIN
     }]];
 }
 
+- (void)warmNonSignalContactsCacheAsync
+{
+    OWSAssertIsOnMainThread();
+    if (self.nonSignalContacts != nil) {
+        return;
+    }
+
+    NSMutableSet<Contact *> *nonSignalContactSet = [NSMutableSet new];
+    __block NSArray<Contact *> *nonSignalContacts;
+
+    [OWSPrimaryStorage.dbReadConnection
+        asyncReadWithBlock:^(YapDatabaseReadTransaction *transaction) {
+            for (Contact *contact in self.contactsManager.allContactsMap.allValues) {
+                NSArray<SignalRecipient *> *signalRecipients = [contact signalRecipientsWithTransaction:transaction];
+                if (signalRecipients.count < 1) {
+                    [nonSignalContactSet addObject:contact];
+                }
+            }
+            nonSignalContacts = [nonSignalContactSet.allObjects
+                sortedArrayUsingComparator:^NSComparisonResult(Contact *_Nonnull left, Contact *_Nonnull right) {
+                    return [left.fullName compare:right.fullName];
+                }];
+        }
+        completionBlock:^{
+            self.nonSignalContacts = nonSignalContacts;
+        }];
+}
+
 - (nullable NSArray<Contact *> *)nonSignalContacts
 {
+    OWSAssertIsOnMainThread();
     if (!_nonSignalContacts) {
         NSMutableSet<Contact *> *nonSignalContacts = [NSMutableSet new];
         [OWSPrimaryStorage.dbReadConnection readWithBlock:^(YapDatabaseReadTransaction *transaction) {

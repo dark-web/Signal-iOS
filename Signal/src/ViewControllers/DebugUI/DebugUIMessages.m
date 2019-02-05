@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "DebugUIMessages.h"
@@ -359,7 +359,11 @@ NS_ASSUME_NONNULL_BEGIN
     NSString *text = [[[@(counter) description] stringByAppendingString:@" "] stringByAppendingString:randomText];
     __block TSOutgoingMessage *message;
     [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-        message = [ThreadUtil enqueueMessageWithText:text inThread:thread quotedReplyModel:nil transaction:transaction];
+        message = [ThreadUtil enqueueMessageWithText:text
+                                            inThread:thread
+                                    quotedReplyModel:nil
+                                    linkPreviewDraft:nil
+                                         transaction:transaction];
     }];
     OWSLogError(@"sendTextMessageInThread timestamp: %llu.", message.timestamp);
 }
@@ -879,6 +883,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                           isRead:NO
                                                    quotedMessage:nil
                                                     contactShare:nil
+                                                     linkPreview:nil
                                                      transaction:transaction];
 
     // This is a hack to "back-date" the message.
@@ -1775,6 +1780,7 @@ NS_ASSUME_NONNULL_BEGIN
                                      isRead:NO
                               quotedMessage:nil
                                contactShare:nil
+                                linkPreview:nil
                                 transaction:transaction];
         }];
 }
@@ -1823,6 +1829,7 @@ NS_ASSUME_NONNULL_BEGIN
                                      isRead:isRead
                               quotedMessage:nil
                                contactShare:nil
+                                linkPreview:nil
                                 transaction:transaction];
         }];
 }
@@ -2006,6 +2013,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                                                        isRead:quotedMessageIsRead
                                                                                 quotedMessage:nil
                                                                                  contactShare:nil
+                                                                                  linkPreview:nil
                                                                                   transaction:transaction];
                 OWSAssertDebug(messageToQuote);
 
@@ -2038,6 +2046,7 @@ NS_ASSUME_NONNULL_BEGIN
                                          isRead:replyIsRead
                                   quotedMessage:quotedMessage
                                    contactShare:nil
+                                    linkPreview:nil
                                     transaction:transaction];
             }
         }
@@ -2887,6 +2896,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                                   isRead:NO
                                                            quotedMessage:nil
                                                             contactShare:nil
+                                                             linkPreview:nil
                                                              transaction:transaction];
             [message setReceivedAtTimestamp:(uint64_t)((int64_t)[NSDate ows_millisecondTimeStamp] + dateOffset)];
             [message saveWithTransaction:transaction];
@@ -2957,6 +2967,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                                   isRead:NO
                                                            quotedMessage:nil
                                                             contactShare:contact
+                                                             linkPreview:nil
                                                              transaction:transaction];
             [message saveWithTransaction:transaction];
         }];
@@ -3452,6 +3463,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                 [[OWSDisappearingMessagesConfiguration alloc] initWithThreadId:thread.uniqueId
                                                                        enabled:YES
                                                                durationSeconds:(uint32_t)[durationSeconds intValue]];
+            // MJK - should be safe to remove this senderTimestamp
             [result addObject:[[OWSDisappearingConfigurationUpdateInfoMessage alloc]
                                        initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                   thread:thread
@@ -3466,6 +3478,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                 [[OWSDisappearingMessagesConfiguration alloc] initWithThreadId:thread.uniqueId
                                                                        enabled:YES
                                                                durationSeconds:(uint32_t)[durationSeconds intValue]];
+            // MJK - should be safe to remove this senderTimestamp
             [result addObject:[[OWSDisappearingConfigurationUpdateInfoMessage alloc]
                                        initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                   thread:thread
@@ -3480,6 +3493,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                 [[OWSDisappearingMessagesConfiguration alloc] initWithThreadId:thread.uniqueId
                                                                        enabled:YES
                                                                durationSeconds:(uint32_t)[durationSeconds intValue]];
+            // MJK TODO - remove senderTimestamp
             [result addObject:[[OWSDisappearingConfigurationUpdateInfoMessage alloc]
                                        initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                   thread:thread
@@ -3492,6 +3506,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                 [[OWSDisappearingMessagesConfiguration alloc] initWithThreadId:thread.uniqueId
                                                                        enabled:NO
                                                                durationSeconds:0];
+            // MJK TODO - remove senderTimestamp
             [result addObject:[[OWSDisappearingConfigurationUpdateInfoMessage alloc]
                                        initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                   thread:thread
@@ -3502,44 +3517,55 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
 
         [result addObject:[TSInfoMessage userNotRegisteredMessageInThread:thread recipientId:@"+19174054215"]];
 
+        // MJK - should be safe to remove this senderTimestamp
         [result addObject:[[TSInfoMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                           inThread:thread
                                                        messageType:TSInfoMessageTypeSessionDidEnd]];
         // TODO: customMessage?
+        // MJK - should be safe to remove this senderTimestamp
         [result addObject:[[TSInfoMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                           inThread:thread
                                                        messageType:TSInfoMessageTypeGroupUpdate]];
         // TODO: customMessage?
+        // MJK - should be safe to remove this senderTimestamp
         [result addObject:[[TSInfoMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                           inThread:thread
                                                        messageType:TSInfoMessageTypeGroupQuit]];
 
+        // MJK - should be safe to remove this senderTimestamp
         [result addObject:[[OWSVerificationStateChangeMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                                 thread:thread
                                                                            recipientId:@"+19174054215"
                                                                      verificationState:OWSVerificationStateDefault
                                                                          isLocalChange:YES]];
+
+        // MJK - should be safe to remove this senderTimestamp
         [result addObject:[[OWSVerificationStateChangeMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                                 thread:thread
                                                                            recipientId:@"+19174054215"
                                                                      verificationState:OWSVerificationStateVerified
                                                                          isLocalChange:YES]];
+        // MJK - should be safe to remove this senderTimestamp
         [result
             addObject:[[OWSVerificationStateChangeMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                             thread:thread
                                                                        recipientId:@"+19174054215"
                                                                  verificationState:OWSVerificationStateNoLongerVerified
                                                                      isLocalChange:YES]];
+
+        // MJK - should be safe to remove this senderTimestamp
         [result addObject:[[OWSVerificationStateChangeMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                                 thread:thread
                                                                            recipientId:@"+19174054215"
                                                                      verificationState:OWSVerificationStateDefault
                                                                          isLocalChange:NO]];
+        // MJK - should be safe to remove this senderTimestamp
         [result addObject:[[OWSVerificationStateChangeMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                                 thread:thread
                                                                            recipientId:@"+19174054215"
                                                                      verificationState:OWSVerificationStateVerified
                                                                          isLocalChange:NO]];
+        // MJK - should be safe to remove this senderTimestamp
         [result
             addObject:[[OWSVerificationStateChangeMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                             thread:thread
@@ -3555,13 +3581,17 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                      withTransaction:transaction]];
         [result addObject:[TSErrorMessage corruptedMessageWithEnvelope:[self createEnvelopeForThread:thread]
                                                        withTransaction:transaction]];
-        
-        
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         TSInvalidIdentityKeyReceivingErrorMessage *_Nullable blockingSNChangeMessage =
             [TSInvalidIdentityKeyReceivingErrorMessage untrustedKeyWithEnvelope:[self createEnvelopeForThread:thread]
                                                                 withTransaction:transaction];
+#pragma clang diagnostic pop
+
         OWSAssertDebug(blockingSNChangeMessage);
         [result addObject:blockingSNChangeMessage];
+        // MJK TODO - should be safe to remove this senderTimestamp
         [result addObject:[[TSErrorMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                            inThread:thread
                                                   failedMessageType:TSErrorMessageNonBlockingIdentityChange
@@ -3724,9 +3754,10 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
     OWSLogInfo(@"sendFakeMessages: %lu", (unsigned long)counter);
 
     for (NSUInteger i = 0; i < counter; i++) {
-        NSString *randomText = [self randomText];
+        NSString *randomText = [[self randomText] stringByAppendingFormat:@" (sequence: %lu)", (unsigned long)i + 1];
         switch (arc4random_uniform(isTextOnly ? 2 : 4)) {
             case 0: {
+                // MJK - should be safe to remove this senderTimestamp
                 TSIncomingMessage *message =
                     [[TSIncomingMessage alloc] initIncomingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                        inThread:thread
@@ -3737,6 +3768,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                                expiresInSeconds:0
                                                                   quotedMessage:nil
                                                                    contactShare:nil
+                                                                    linkPreview:nil
                                                                 serverTimestamp:nil
                                                                 wasReceivedByUD:NO];
                 [message markAsReadNowWithSendReadReceipt:NO transaction:transaction];
@@ -3751,6 +3783,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                          isRead:NO
                                   quotedMessage:nil
                                    contactShare:nil
+                                    linkPreview:nil
                                     transaction:transaction];
                 break;
             }
@@ -3768,6 +3801,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                    attachmentType:TSAttachmentTypeDefault];
                 pointer.state = TSAttachmentPointerStateFailed;
                 [pointer saveWithTransaction:transaction];
+                // MJK - should be safe to remove this senderTimestamp
                 TSIncomingMessage *message =
                     [[TSIncomingMessage alloc] initIncomingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                        inThread:thread
@@ -3780,6 +3814,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                                expiresInSeconds:0
                                                                   quotedMessage:nil
                                                                    contactShare:nil
+                                                                    linkPreview:nil
                                                                 serverTimestamp:nil
                                                                 wasReceivedByUD:NO];
                 [message markAsReadNowWithSendReadReceipt:NO transaction:transaction];
@@ -3810,6 +3845,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                  isVoiceMessage:NO
                                   quotedMessage:nil
                                    contactShare:nil
+                                    linkPreview:nil
                                     transaction:transaction];
                 break;
             }
@@ -3852,6 +3888,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
             [ThreadUtil enqueueMessageWithText:[@(counter) description]
                                       inThread:thread
                               quotedReplyModel:nil
+                              linkPreviewDraft:nil
                                    transaction:transaction];
         }];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)1.f * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
@@ -4165,6 +4202,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
         OWSDisappearingMessagesConfiguration *configuration =
             [OWSDisappearingMessagesConfiguration fetchObjectWithUniqueID:thread.uniqueId
                                                               transaction:initialTransaction];
+        // MJK TODO - remove senderTimestamp
         TSOutgoingMessage *message = [[TSOutgoingMessage alloc]
             initOutgoingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                     inThread:thread
@@ -4175,7 +4213,8 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                               isVoiceMessage:NO
                             groupMetaMessage:TSGroupMetaMessageUnspecified
                                quotedMessage:nil
-                                contactShare:nil];
+                                contactShare:nil
+                                 linkPreview:nil];
         OWSLogError(@"resurrectNewOutgoingMessages2 timestamp: %llu.", message.timestamp);
         [messages addObject:message];
     }
@@ -4232,6 +4271,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
         for (NSNumber *timestamp in timestamps) {
             NSString *randomText = [self randomText];
             {
+                // Legit usage of SenderTimestamp to backdate incoming sent messages for Debug
                 TSIncomingMessage *message =
                     [[TSIncomingMessage alloc] initIncomingMessageWithTimestamp:timestamp.unsignedLongLongValue
                                                                        inThread:thread
@@ -4242,11 +4282,13 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                                expiresInSeconds:0
                                                                   quotedMessage:nil
                                                                    contactShare:nil
+                                                                    linkPreview:nil
                                                                 serverTimestamp:nil
                                                                 wasReceivedByUD:NO];
                 [message markAsReadNowWithSendReadReceipt:NO transaction:transaction];
             }
             {
+                // MJK TODO - this might be the one place we actually use senderTimestamp
                 TSOutgoingMessage *message =
                     [[TSOutgoingMessage alloc] initOutgoingMessageWithTimestamp:timestamp.unsignedLongLongValue
                                                                        inThread:thread
@@ -4257,7 +4299,8 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                                  isVoiceMessage:NO
                                                                groupMetaMessage:TSGroupMetaMessageUnspecified
                                                                   quotedMessage:nil
-                                                                   contactShare:nil];
+                                                                   contactShare:nil
+                                                                    linkPreview:nil];
                 [message saveWithTransaction:transaction];
                 [message updateWithFakeMessageState:TSOutgoingMessageStateSent transaction:transaction];
                 [message updateWithSentRecipient:recipientId wasSentByUD:NO transaction:transaction];
@@ -4273,6 +4316,8 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
 + (void)createDisappearingMessagesWhichFailedToStartInThread:(TSThread *)thread
 {
     uint64_t now = [NSDate ows_millisecondTimeStamp];
+
+    // MJK TODO - should be safe to remove this senderTimestamp
     TSIncomingMessage *message = [[TSIncomingMessage alloc]
         initIncomingMessageWithTimestamp:now
                                 inThread:thread
@@ -4284,6 +4329,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                         expiresInSeconds:60
                            quotedMessage:nil
                             contactShare:nil
+                             linkPreview:nil
                          serverTimestamp:nil
                          wasReceivedByUD:NO];
     // private setter to avoid starting expire machinery.
@@ -4453,6 +4499,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                           isRead:(BOOL)isRead
                                    quotedMessage:(nullable TSQuotedMessage *)quotedMessage
                                     contactShare:(nullable OWSContact *)contactShare
+                                     linkPreview:(nullable OWSLinkPreview *)linkPreview
                                      transaction:(YapDatabaseReadWriteTransaction *)transaction
 {
     OWSAssertDebug(thread);
@@ -4479,6 +4526,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                             isVoiceMessage:attachment.isVoiceMessage
                              quotedMessage:quotedMessage
                               contactShare:contactShare
+                               linkPreview:linkPreview
                                transaction:transaction];
 }
 
@@ -4492,6 +4540,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                   isVoiceMessage:(BOOL)isVoiceMessage
                                    quotedMessage:(nullable TSQuotedMessage *)quotedMessage
                                     contactShare:(nullable OWSContact *)contactShare
+                                     linkPreview:(nullable OWSLinkPreview *)linkPreview
                                      transaction:(YapDatabaseReadWriteTransaction *)transaction
 {
     OWSAssertDebug(thread);
@@ -4503,6 +4552,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
         [attachmentIds addObject:attachmentId];
     }
 
+    // MJK TODO - remove senderTimestamp
     TSOutgoingMessage *message =
         [[TSOutgoingMessage alloc] initOutgoingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                            inThread:thread
@@ -4513,7 +4563,8 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                      isVoiceMessage:isVoiceMessage
                                                    groupMetaMessage:TSGroupMetaMessageUnspecified
                                                       quotedMessage:quotedMessage
-                                                       contactShare:contactShare];
+                                                       contactShare:contactShare
+                                                        linkPreview:linkPreview];
 
     if (attachmentId.length > 0 && filename.length > 0) {
         message.attachmentFilenameMap[attachmentId] = filename;
@@ -4592,6 +4643,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
     //    uint64_t millisAgo = (uint64_t)(((double)arc4random() / ((double)0xffffffff)) * yearsMillis);
     //    uint64_t timestamp = [NSDate ows_millisecondTimeStamp] - millisAgo;
 
+    // MJK TODO - should be safe to remove this senderTimestamp
     TSIncomingMessage *message =
         [[TSIncomingMessage alloc] initIncomingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                            inThread:thread
@@ -4602,6 +4654,7 @@ typedef OWSContact * (^OWSContactBlock)(YapDatabaseReadWriteTransaction *transac
                                                    expiresInSeconds:0
                                                       quotedMessage:quotedMessage
                                                        contactShare:nil
+                                                        linkPreview:nil
                                                     serverTimestamp:nil
                                                     wasReceivedByUD:NO];
     [message markAsReadNowWithSendReadReceipt:NO transaction:transaction];

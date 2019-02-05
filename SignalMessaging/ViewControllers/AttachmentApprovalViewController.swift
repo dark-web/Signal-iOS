@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import Foundation
@@ -14,6 +14,8 @@ public protocol AttachmentApprovalViewControllerDelegate: class {
     @objc optional func attachmentApproval(_ attachmentApproval: AttachmentApprovalViewController, addMoreToAttachments attachments: [SignalAttachment])
     @objc optional func attachmentApproval(_ attachmentApproval: AttachmentApprovalViewController, changedCaptionOfAttachment attachment: SignalAttachment)
 }
+
+// MARK: -
 
 class AttachmentItemCollection {
     private (set) var attachmentItems: [SignalAttachmentItem]
@@ -48,6 +50,8 @@ class AttachmentItemCollection {
     }
 }
 
+// MARK: -
+
 class SignalAttachmentItem: Hashable {
 
     enum SignalAttachmentItemError: Error {
@@ -56,8 +60,25 @@ class SignalAttachmentItem: Hashable {
 
     let attachment: SignalAttachment
 
+    // This might be nil if the attachment is not a valid image.
+    var imageEditorModel: ImageEditorModel?
+
     init(attachment: SignalAttachment) {
         self.attachment = attachment
+
+        // Try and make a ImageEditorModel.
+        // This will only apply for valid images.
+        if ImageEditorModel.isFeatureEnabled,
+            let dataUrl: URL = attachment.dataUrl,
+            dataUrl.isFileURL {
+            let path = dataUrl.path
+            do {
+                imageEditorModel = try ImageEditorModel(srcImagePath: path)
+            } catch {
+                // Usually not an error; this usually indicates invalid input.
+                Logger.warn("Could not create image editor: \(error)")
+            }
+        }
     }
 
     // MARK: 
@@ -97,11 +118,15 @@ class SignalAttachmentItem: Hashable {
     }
 }
 
+// MARK: -
+
 @objc
 public enum AttachmentApprovalViewControllerMode: UInt {
     case modal
     case sharedNavigation
 }
+
+// MARK: -
 
 @objc
 public class AttachmentApprovalViewController: UIPageViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
@@ -198,6 +223,9 @@ public class AttachmentApprovalViewController: UIPageViewController, UIPageViewC
         }
 
         self.setCurrentItem(firstItem, direction: .forward, animated: false)
+
+        // layout immediately to avoid animating the layout process during the transition
+        self.currentPageViewController.view.layoutIfNeeded()
 
         // As a refresher, the _Information Architecture_ here is:
         //
@@ -375,29 +403,6 @@ public class AttachmentApprovalViewController: UIPageViewController, UIPageViewC
         })
     }
 
-    func addDeleteIcon(cellView: GalleryRailCellView) {
-        guard let attachmentItem = cellView.item as? SignalAttachmentItem else {
-            owsFailDebug("attachmentItem was unexpectedly nil")
-            return
-        }
-
-        let button = OWSButton { [weak self] in
-            guard let strongSelf = self else { return }
-            strongSelf.remove(attachmentItem: attachmentItem)
-        }
-        button.setImage(#imageLiteral(resourceName: "ic_small_x"), for: .normal)
-
-        let kInsetDistance: CGFloat = 5
-        button.imageEdgeInsets = UIEdgeInsets(top: kInsetDistance, left: kInsetDistance, bottom: kInsetDistance, right: kInsetDistance)
-
-        cellView.addSubview(button)
-
-        let kButtonWidth: CGFloat = 9 + kInsetDistance * 2
-        button.autoSetDimensions(to: CGSize(width: kButtonWidth, height: kButtonWidth))
-        button.autoPinEdge(toSuperviewMargin: .top)
-        button.autoPinEdge(toSuperviewMargin: .trailing)
-    }
-
     lazy var pagerScrollView: UIScrollView? = {
         // This is kind of a hack. Since we don't have first class access to the superview's `scrollView`
         // we traverse the view hierarchy until we find it.
@@ -531,6 +536,10 @@ public class AttachmentApprovalViewController: UIPageViewController, UIPageViewC
             return
         }
 
+        page.loadViewIfNeeded()
+        let keyboardScenario: KeyboardScenario = bottomToolView.isEditingMediaMessage ? .editingMessage : .hidden
+        page.updateCaptionViewBottomInset(keyboardScenario: keyboardScenario)
+
         self.setViewControllers([page], direction: direction, animated: isAnimated, completion: nil)
         updateMediaRail()
     }
@@ -541,12 +550,15 @@ public class AttachmentApprovalViewController: UIPageViewController, UIPageViewC
             return
         }
 
-        let cellViewDecoratorBlock = { (cellView: GalleryRailCellView) in
-            self.addDeleteIcon(cellView: cellView)
+        let cellViewBuilder: () -> ApprovalRailCellView = { [weak self] in
+            let cell = ApprovalRailCellView()
+            cell.approvalRailCellDelegate = self
+            return cell
         }
+
         galleryRailView.configureCellViews(itemProvider: attachmentItemCollection,
                                            focusedItem: currentItem,
-                                           cellViewDecoratorBlock: cellViewDecoratorBlock)
+                                           cellViewBuilder: cellViewBuilder)
 
         galleryRailView.isHidden = attachmentItemCollection.attachmentItems.count < 2
     }
@@ -558,7 +570,67 @@ public class AttachmentApprovalViewController: UIPageViewController, UIPageViewC
     }
 
     var attachments: [SignalAttachment] {
-        return attachmentItems.map { $0.attachment }
+        return attachmentItems.map { (attachmentItem) in
+            autoreleasepool {
+                return self.processedAttachment(forAttachmentItem: attachmentItem)
+            }
+        }
+    }
+
+    // For any attachments edited with the image editor, returns a
+    // new SignalAttachment that reflects those changes.  Otherwise,
+    // returns the original attachment.
+    //
+    // If any errors occurs in the export process, we fail over to
+    // sending the original attachment.  This seems better than trying
+    // to involve the user in resolving the issue.
+    func processedAttachment(forAttachmentItem attachmentItem: SignalAttachmentItem) -> SignalAttachment {
+        guard let imageEditorModel = attachmentItem.imageEditorModel else {
+            // Image was not edited.
+            return attachmentItem.attachment
+        }
+        guard imageEditorModel.itemCount() > 0 else {
+            // Image editor has no changes.
+            return attachmentItem.attachment
+        }
+        guard let dstImage = ImageEditorView.renderForOutput(model: imageEditorModel) else {
+            owsFailDebug("Could not render for output.")
+            return attachmentItem.attachment
+        }
+        var dataUTI = kUTTypeImage as String
+        guard let dstData: Data = {
+            let isLossy: Bool = attachmentItem.attachment.mimeType.caseInsensitiveCompare(OWSMimeTypeImageJpeg) == .orderedSame
+            if isLossy {
+                dataUTI = kUTTypeJPEG as String
+                return UIImageJPEGRepresentation(dstImage, 0.9)
+            } else {
+                dataUTI = kUTTypePNG as String
+                return UIImagePNGRepresentation(dstImage)
+            }
+            }() else {
+                owsFailDebug("Could not export for output.")
+                return attachmentItem.attachment
+        }
+        guard let dataSource = DataSourceValue.dataSource(with: dstData, utiType: dataUTI) else {
+            owsFailDebug("Could not prepare data source for output.")
+            return attachmentItem.attachment
+        }
+
+        // Rewrite the filename's extension to reflect the output file format.
+        var filename: String? = attachmentItem.attachment.sourceFilename
+        if let sourceFilename = attachmentItem.attachment.sourceFilename {
+            if let fileExtension: String = MIMETypeUtil.fileExtension(forUTIType: dataUTI) {
+                filename = (sourceFilename as NSString).deletingPathExtension.appendingFileExtension(fileExtension)
+            }
+        }
+        dataSource.sourceFilename = filename
+
+        let dstAttachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: dataUTI, imageQuality: .original)
+        if let attachmentError = dstAttachment.error {
+            owsFailDebug("Could not prepare attachment for output: \(attachmentError).")
+            return attachmentItem.attachment
+        }
+        return dstAttachment
     }
 
     func attachmentItem(before currentItem: SignalAttachmentItem) -> SignalAttachmentItem? {
@@ -864,6 +936,23 @@ public class AttachmentPrepViewController: OWSViewController, PlayerProgressBarD
 
         containerView.addSubview(mediaMessageView)
         mediaMessageView.autoPinEdgesToSuperviewEdges()
+
+        #if DEBUG
+        if let imageEditorModel = attachmentItem.imageEditorModel,
+            let imageMediaView = mediaMessageView.contentView {
+
+            let imageEditorView = ImageEditorView(model: imageEditorModel)
+            if imageEditorView.configureSubviews() {
+                mediaMessageView.isHidden = true
+
+                imageMediaView.isUserInteractionEnabled = true
+                mediaMessageView.superview?.addSubview(imageEditorView)
+                imageEditorView.autoPin(toEdgesOf: mediaMessageView)
+
+                imageEditorView.addControls(to: imageEditorView)
+            }
+        }
+        #endif
 
         if isZoomable {
             // Add top and bottom gradients to ensure toolbar controls are legible
@@ -1442,6 +1531,10 @@ class CaptionView: UIView {
 }
 
 let kMaxCaptionCharacterCount = 240
+
+// Coincides with Android's max text message length
+let kMaxMessageBodyCharacterCount = 2000
+
 extension CaptionView: UITextViewDelegate {
 
     public func textViewShouldBeginEditing(_ textView: UITextView) -> Bool {
@@ -1752,6 +1845,7 @@ class MediaMessageTextToolbar: UIView, UITextViewDelegate {
         let existingText: String = textView.text ?? ""
         let proposedText: String = (existingText as NSString).replacingCharacters(in: range, with: text)
 
+        // Don't complicate things by mixing media attachments with oversize text attachments
         guard proposedText.utf8.count <= kOversizeTextMessageSizeThreshold else {
             Logger.debug("long text was truncated")
             self.lengthLimitLabel.isHidden = false
@@ -1771,6 +1865,25 @@ class MediaMessageTextToolbar: UIView, UITextViewDelegate {
             return false
         }
         self.lengthLimitLabel.isHidden = true
+
+        // After verifying the byte-length is sufficiently small, verify the character count is within bounds.
+        guard proposedText.count <= kMaxMessageBodyCharacterCount else {
+            Logger.debug("hit attachment message body character count limit")
+
+            self.lengthLimitLabel.isHidden = false
+
+            // `range` represents the section of the existing text we will replace. We can re-use that space.
+            let charsAfterDelete: Int = (existingText as NSString).replacingCharacters(in: range, with: "").count
+
+            // Accept as much of the input as we can
+            let charBudget: Int = Int(kMaxMessageBodyCharacterCount) - charsAfterDelete
+            if charBudget >= 0 {
+                let acceptableNewText = String(text.prefix(charBudget))
+                textView.text = (existingText as NSString).replacingCharacters(in: range, with: acceptableNewText)
+            }
+
+            return false
+        }
 
         // Though we can wrap the text, we don't want to encourage multline captions, plus a "done" button
         // allows the user to get the keyboard out of the way while in the attachment approval view.
@@ -1830,5 +1943,56 @@ class MediaMessageTextToolbar: UIView, UITextViewDelegate {
     private func clampedTextViewHeight(fixedWidth: CGFloat) -> CGFloat {
         let contentSize = textView.sizeThatFits(CGSize(width: fixedWidth, height: CGFloat.greatestFiniteMagnitude))
         return CGFloatClamp(contentSize.height, kMinTextViewHeight, maxTextViewHeight)
+    }
+}
+
+extension AttachmentApprovalViewController: ApprovalRailCellViewDelegate {
+    func approvalRailCellView(_ approvalRailCellView: ApprovalRailCellView, didRemoveItem attachmentItem: SignalAttachmentItem) {
+        remove(attachmentItem: attachmentItem)
+    }
+}
+
+protocol ApprovalRailCellViewDelegate: class {
+    func approvalRailCellView(_ approvalRailCellView: ApprovalRailCellView, didRemoveItem attachmentItem: SignalAttachmentItem)
+}
+
+public class ApprovalRailCellView: GalleryRailCellView {
+
+    weak var approvalRailCellDelegate: ApprovalRailCellViewDelegate?
+
+    lazy var deleteButton: UIButton = {
+        let button = OWSButton { [weak self] in
+            guard let strongSelf = self else { return }
+
+            guard let attachmentItem = strongSelf.item as? SignalAttachmentItem else {
+                owsFailDebug("attachmentItem was unexpectedly nil")
+                return
+            }
+
+            strongSelf.approvalRailCellDelegate?.approvalRailCellView(strongSelf, didRemoveItem: attachmentItem)
+        }
+
+        button.setImage(#imageLiteral(resourceName: "ic_circled_x"), for: .normal)
+
+        let kInsetDistance: CGFloat = 5
+        button.imageEdgeInsets = UIEdgeInsets(top: kInsetDistance, left: kInsetDistance, bottom: kInsetDistance, right: kInsetDistance)
+
+        let kButtonWidth: CGFloat = 24 + kInsetDistance * 2
+        button.autoSetDimensions(to: CGSize(width: kButtonWidth, height: kButtonWidth))
+
+        return button
+    }()
+
+    override func setIsSelected(_ isSelected: Bool) {
+        super.setIsSelected(isSelected)
+
+        if isSelected {
+            addSubview(deleteButton)
+
+            deleteButton.autoPinEdge(toSuperviewEdge: .top, withInset: -12)
+            deleteButton.autoPinEdge(toSuperviewEdge: .trailing, withInset: -8)
+        } else {
+            deleteButton.removeFromSuperview()
+        }
     }
 }

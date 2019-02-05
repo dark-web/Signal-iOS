@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import Foundation
@@ -55,7 +55,7 @@ public class MediaGalleryItem: Equatable, Hashable {
         self.captionForDisplay = attachmentStream.caption?.filterForDisplay
         self.galleryDate = GalleryDate(message: message)
         self.albumIndex = message.attachmentIds.index(of: attachmentStream.uniqueId!)
-        self.orderingKey = MediaGalleryItemOrderingKey(messageSortKey: message.timestampForSorting(), attachmentSortKey: albumIndex)
+        self.orderingKey = MediaGalleryItemOrderingKey(messageSortKey: message.sortId, attachmentSortKey: albumIndex)
     }
 
     var isVideo: Bool {
@@ -120,7 +120,7 @@ public struct GalleryDate: Hashable, Comparable, Equatable {
     let month: Int
 
     init(message: TSMessage) {
-        let date = message.dateForSorting()
+        let date = message.receivedAtDate()
 
         self.year = Calendar.current.component(.year, from: date)
         self.month = Calendar.current.component(.month, from: date)
@@ -377,6 +377,11 @@ class MediaGallery: NSObject, MediaGalleryDataSource, MediaTileViewControllerDel
         // For a speedy load, we only fetch a few items on either side of
         // the initial message
         ensureGalleryItemsLoaded(.around, item: initialDetailItem, amount: 10)
+
+        // We lazily load media into the gallery, but with large albums, we want to be sure
+        // we load all the media required to render the album's media rail.
+        ensureAlbumEntirelyLoaded(galleryItem: initialDetailItem)
+
         self.initialDetailItem = initialDetailItem
 
         let pageViewController = MediaPageViewController(initialItem: initialDetailItem, mediaGalleryDataSource: self, uiDatabaseConnection: self.uiDatabaseConnection, options: self.options)
@@ -736,6 +741,16 @@ class MediaGallery: NSObject, MediaGalleryDataSource, MediaTileViewControllerDel
         galleryItem.album = getAlbum(item: galleryItem)
 
         return galleryItem
+    }
+
+    func ensureAlbumEntirelyLoaded(galleryItem: MediaGalleryItem) {
+        ensureGalleryItemsLoaded(.before, item: galleryItem, amount: UInt(galleryItem.albumIndex))
+
+        let followingCount = galleryItem.message.attachmentIds.count - 1 - galleryItem.albumIndex
+        guard followingCount >= 0 else {
+            return
+        }
+        ensureGalleryItemsLoaded(.after, item: galleryItem, amount: UInt(followingCount))
     }
 
     var galleryAlbums: [String: MediaGalleryAlbum] = [:]

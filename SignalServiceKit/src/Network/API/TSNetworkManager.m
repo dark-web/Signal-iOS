@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "TSNetworkManager.h"
@@ -14,6 +14,8 @@
 #import <AFNetworking/AFNetworking.h>
 #import <SignalCoreKit/NSData+OWS.h>
 #import <SignalServiceKit/SignalServiceKit-Swift.h>
+
+NS_ASSUME_NONNULL_BEGIN
 
 NSErrorDomain const TSNetworkManagerErrorDomain = @"SignalServiceKit.TSNetworkManager";
 
@@ -37,10 +39,19 @@ typedef void (^failureBlock)(NSURLSessionDataTask *task, NSError *error);
 
 @implementation TSNetworkManager
 
+#pragma mark - Dependencies
+
++ (TSAccountManager *)tsAccountManager
+{
+    return TSAccountManager.sharedInstance;
+}
+
+#pragma mark -
+
 @synthesize udSessionManager = _udSessionManager;
 @synthesize udSerialQueue = _udSerialQueue;
 
-#pragma mark Singleton implementation
+#pragma mark - Singleton
 
 + (instancetype)sharedManager
 {
@@ -108,7 +119,7 @@ typedef void (^failureBlock)(NSURLSessionDataTask *task, NSError *error);
         OWSLogInfo(@"Non-UD request succeeded : %@", request);
 
         if (request.shouldHaveAuthorizationHeaders) {
-            [TSAccountManager.sharedInstance setIsDeregistered:NO];
+            [TSNetworkManager.tsAccountManager setIsDeregistered:NO];
         }
 
         successBlock(task, responseObject);
@@ -406,16 +417,21 @@ typedef void (^failureBlock)(NSURLSessionDataTask *task, NSError *error);
     // * etc.
     if ([task.originalRequest.URL.absoluteString hasPrefix:textSecureServerURL]
         && request.shouldHaveAuthorizationHeaders) {
-        [TSAccountManager.sharedInstance setIsDeregistered:YES];
+        if (self.tsAccountManager.isRegisteredAndReady) {
+            [self.tsAccountManager setIsDeregistered:YES];
+        } else {
+            OWSFailDebug(
+                @"Ignoring auth failure; not registered and ready: %@.", task.originalRequest.URL.absoluteString);
+        }
     } else {
         OWSLogWarn(@"Ignoring %d for URL: %@", (int)statusCode, task.originalRequest.URL.absoluteString);
     }
 }
 
 + (NSError *)errorWithHTTPCode:(NSInteger)code
-                   description:(NSString *)description
-                 failureReason:(NSString *)failureReason
-            recoverySuggestion:(NSString *)recoverySuggestion
+                   description:(nullable NSString *)description
+                 failureReason:(nullable NSString *)failureReason
+            recoverySuggestion:(nullable NSString *)recoverySuggestion
                  fallbackError:(NSError *)fallbackError
 {
     OWSAssertDebug(fallbackError);
@@ -454,3 +470,5 @@ typedef void (^failureBlock)(NSURLSessionDataTask *task, NSError *error);
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

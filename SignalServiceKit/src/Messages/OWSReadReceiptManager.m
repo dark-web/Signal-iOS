@@ -245,17 +245,17 @@ NSString *const OWSReadReceiptManagerAreReadReceiptsEnabled = @"areReadReceiptsE
 
 #pragma mark - Mark as Read Locally
 
-- (void)markAsReadLocallyBeforeTimestamp:(uint64_t)timestamp thread:(TSThread *)thread
+- (void)markAsReadLocallyBeforeSortId:(uint64_t)sortId thread:(TSThread *)thread
 {
     OWSAssertDebug(thread);
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-            [self markAsReadBeforeTimestamp:timestamp
-                                     thread:thread
-                              readTimestamp:[NSDate ows_millisecondTimeStamp]
-                                   wasLocal:YES
-                                transaction:transaction];
+            [self markAsReadBeforeSortId:sortId
+                                  thread:thread
+                           readTimestamp:[NSDate ows_millisecondTimeStamp]
+                                wasLocal:YES
+                             transaction:transaction];
         }];
     });
 }
@@ -452,61 +452,52 @@ NSString *const OWSReadReceiptManagerAreReadReceiptsEnabled = @"areReadReceiptsE
     // Always re-mark the message as read to ensure any earlier read time is applied to disappearing messages.
     [message markAsReadAtTimestamp:readTimestamp sendReadReceipt:NO transaction:transaction];
 
-    // Also mark any messages appearing earlier in the thread as read.
-    //
-    // Use `timestampForSorting` which reflects local received order, rather than `timestamp`
-    // which reflect sender time.
-    [self markAsReadBeforeTimestamp:message.timestampForSorting
-                             thread:[message threadWithTransaction:transaction]
-                      readTimestamp:readTimestamp
-                           wasLocal:NO
-                        transaction:transaction];
+    // Also mark any unread messages appearing earlier in the thread as read as well.
+    [self markAsReadBeforeSortId:message.sortId
+                          thread:[message threadWithTransaction:transaction]
+                   readTimestamp:readTimestamp
+                        wasLocal:NO
+                     transaction:transaction];
 }
 
 #pragma mark - Mark As Read
 
-- (void)markAsReadBeforeTimestamp:(uint64_t)timestamp
-                           thread:(TSThread *)thread
-                    readTimestamp:(uint64_t)readTimestamp
-                         wasLocal:(BOOL)wasLocal
-                      transaction:(YapDatabaseReadWriteTransaction *)transaction
+- (void)markAsReadBeforeSortId:(uint64_t)sortId
+                        thread:(TSThread *)thread
+                 readTimestamp:(uint64_t)readTimestamp
+                      wasLocal:(BOOL)wasLocal
+                   transaction:(YapDatabaseReadWriteTransaction *)transaction
 {
-    OWSAssertDebug(timestamp > 0);
+    OWSAssertDebug(sortId > 0);
     OWSAssertDebug(thread);
     OWSAssertDebug(transaction);
 
     NSMutableArray<id<OWSReadTracking>> *newlyReadList = [NSMutableArray new];
 
     [[TSDatabaseView unseenDatabaseViewExtension:transaction]
-     enumerateRowsInGroup:thread.uniqueId
-     usingBlock:^(NSString *collection,
-                  NSString *key,
-                  id object,
-                  id metadata,
-                  NSUInteger index,
-                  BOOL *stop) {
-         
-         if (![object conformsToProtocol:@protocol(OWSReadTracking)]) {
-             OWSFailDebug(@"Expected to conform to OWSReadTracking: object with class: %@ collection: %@ "
-                          @"key: %@",
-                 [object class],
-                 collection,
-                 key);
-             return;
-         }
-         id<OWSReadTracking> possiblyRead = (id<OWSReadTracking>)object;
-         
-         if (possiblyRead.timestampForSorting > timestamp) {
-             *stop = YES;
-             return;
-         }
-         
-         OWSAssertDebug(!possiblyRead.read);
-         OWSAssertDebug(possiblyRead.expireStartedAt == 0);
-         if (!possiblyRead.read) {
-             [newlyReadList addObject:possiblyRead];
-         }
-     }];
+        enumerateKeysAndObjectsInGroup:thread.uniqueId
+                            usingBlock:^(NSString *collection, NSString *key, id object, NSUInteger index, BOOL *stop) {
+                                if (![object conformsToProtocol:@protocol(OWSReadTracking)]) {
+                                    OWSFailDebug(
+                                        @"Expected to conform to OWSReadTracking: object with class: %@ collection: %@ "
+                                        @"key: %@",
+                                        [object class],
+                                        collection,
+                                        key);
+                                    return;
+                                }
+                                id<OWSReadTracking> possiblyRead = (id<OWSReadTracking>)object;
+                                if (possiblyRead.sortId > sortId) {
+                                    *stop = YES;
+                                    return;
+                                }
+
+                                OWSAssertDebug(!possiblyRead.read);
+                                OWSAssertDebug(possiblyRead.expireStartedAt == 0);
+                                if (!possiblyRead.read) {
+                                    [newlyReadList addObject:possiblyRead];
+                                }
+                            }];
 
     if (newlyReadList.count < 1) {
         return;

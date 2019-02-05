@@ -311,8 +311,14 @@
 /* Label for generic done button. */
 "BUTTON_DONE" = "Tamam";
 
+/* Label for redo button. */
+"BUTTON_REDO" = "Yinele";
+
 /* Button text to enable batch selection mode */
 "BUTTON_SELECT" = "Seç";
+
+/* Label for undo button. */
+"BUTTON_UNDO" = "Geri al";
 
 /* Label for button that lets users call a contact again. */
 "CALL_AGAIN_BUTTON_TITLE" = "Tekrar Ara";
@@ -414,7 +420,7 @@
 "CLOUDKIT_STATUS_NO_ACCOUNT" = "iCloud hesabı bulunamadı. Signal verilerinizi yedeklemek için iOS ayarlar uygulamasından iCloud hesabınıza giriş yapın.";
 
 /* Error indicating that the app was prevented from accessing the user's iCloud account. */
-"CLOUDKIT_STATUS_RESTRICTED" = "Signal'in iCloud erişimi engellenmiş. Signal verilerinizi yedeklemek için iOS ayarlar uygulamasından Signal'in iCloud hesabınıza erişim izni verin.";
+"CLOUDKIT_STATUS_RESTRICTED" = "Signal'in iCloud erişimi engellenmiş. Signal verilerinizi yedeklemek için iOS ayarlar uygulamasından Signal'in iCloud hesabınıza erişimine izni verin.";
 
 /* The first of two messages demonstrating the chosen conversation color, by rendering this message in an outgoing message bubble. */
 "COLOR_PICKER_DEMO_MESSAGE_1" = "Bu sohbete gönderilen mesajarın rengini seçin.";
@@ -1074,6 +1080,18 @@
 /* Title for the home view's default mode. */
 "HOME_VIEW_TITLE_INBOX" = "Signal";
 
+/* Label for brush button in image editor. */
+"IMAGE_EDITOR_BRUSH_BUTTON" = "Fırça";
+
+/* Label for crop button in image editor. */
+"IMAGE_EDITOR_CROP_BUTTON" = "Kırpma";
+
+/* Momentarily shown to the user when attempting to select more images than is allowed. Embeds {{max number of items}} that can be shared. */
+"IMAGE_PICKER_CAN_SELECT_NO_MORE_TOAST_FORMAT" = "%@ öğeden daha fazlasını paylaşamazsınız.";
+
+/* alert title */
+"IMAGE_PICKER_FAILED_TO_PROCESS_ATTACHMENTS" = "Eklenti seçimi başarısız oldu.";
+
 /* Call setup status label */
 "IN_CALL_CONNECTING" = "Bağlanıyor...";
 
@@ -1166,6 +1184,9 @@
 
 /* Navigation title when scanning QR code to add new device. */
 "LINK_NEW_DEVICE_TITLE" = "Yeni Cihaz Bağlayın";
+
+/* Label for link previews with an unknown host. */
+"LINK_PREVIEW_UNKNOWN_DOMAIN" = "Link Preview";
 
 /* Menu item and navbar title for the device manager */
 "LINKED_DEVICES_TITLE" = "Bağlı Cihazlar";
@@ -1453,6 +1474,9 @@
 
 /* Label for a button that lets users search for contacts by phone number */
 "NO_CONTACTS_SEARCH_BY_PHONE_NUMBER" = "Kişileri Telefon Numarası ile Bul";
+
+/* Label for 1:1 conversation with yourself. */
+"NOTE_TO_SELF" = "Kendime Not";
 
 /* Lock screen notification text presented after user powers on their device without unlocking. Embeds {{device model}} (either 'iPad' or 'iPhone') */
 "NOTIFICATION_BODY_PHONE_LOCKED_FORMAT" = "%@ cihazınız yeniden başlarken mesaj almış olabilirsiniz.";
@@ -2066,6 +2090,15 @@
 /* table cell label */
 "SETTINGS_LEGAL_TERMS_CELL" = "Şartlar ve Gizlilik İlkesi";
 
+/* Setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS" = "Send Link Previews";
+
+/* Footer for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_FOOTER" = "Previews are supported for Imgur, Instagram, Reddit, and YouTube links.";
+
+/* Header for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_HEADER" = "Link Previews";
+
 /* Title for settings activity */
 "SETTINGS_NAV_BAR_TITLE" = "Ayarlar";
 
@@ -2342,6 +2375,15 @@
 /* button label shown one time, after upgrade */
 "UPGRADE_EXPERIENCE_ENABLE_TYPING_INDICATOR_BUTTON" = "'Yazıyor' Göstergelerini Aç";
 
+/* Body text for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_DESCRIPTION" = "Optional link previews are now supported for some of the most popular sites on the Internet.";
+
+/* Subtitle for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_SUBTITLE" = "You can disable or enable this feature anytime in your Signal settings (Privacy > Send link previews).";
+
+/* Header for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_TITLE" = "Link Previews";
+
 /* Description for notification audio customization */
 "UPGRADE_EXPERIENCE_INTRODUCING_NOTIFICATION_AUDIO_DESCRIPTION" = "Artık varsayılan ve sohbet başına bildirim seslerini seçebilirsiniz ve aramalar her sistem kişisi için seçtiğiniz zil sesine uygun olacaktır.";
 
@@ -2386,9 +2428,6 @@
 
 /* Title for the alert indicating that user should upgrade iOS. */
 "UPGRADE_IOS_ALERT_TITLE" = "iOS'u Güncelle";
-
-/* No comment provided by engineer. */
-"Upgrading Signal ..." = "Signal yükseltiliyor…";
 
 /* button text for back button on verification view */
 "VERIFICATION_BACK_BUTTON" = "Geri";

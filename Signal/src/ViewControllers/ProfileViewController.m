@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "ProfileViewController.h"
@@ -13,10 +13,10 @@
 #import "UIFont+OWS.h"
 #import "UIView+OWS.h"
 #import <SignalCoreKit/NSDate+OWS.h>
-#import <SignalMessaging/NSString+OWS.h>
 #import <SignalMessaging/OWSNavigationController.h>
 #import <SignalMessaging/OWSProfileManager.h>
 #import <SignalMessaging/UIViewController+OWS.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/OWSPrimaryStorage.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -617,6 +617,14 @@ NSString *const kProfileView_LastPresentedDate = @"kProfileView_LastPresentedDat
         [self backOrSkipButtonPressed];
     }
     return result;
+}
+
+#pragma mark - Orientation
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    return (self.profileViewMode == ProfileViewMode_Registration ? UIInterfaceOrientationMaskPortrait
+                                                                 : DefaultUIInterfaceOrientationMask());
 }
 
 @end

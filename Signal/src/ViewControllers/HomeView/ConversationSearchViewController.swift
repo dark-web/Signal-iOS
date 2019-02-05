@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import Foundation
@@ -25,7 +25,13 @@ class ConversationSearchViewController: UITableViewController, BlockListCacheDel
         }
     }
 
-    var searchResultSet: SearchResultSet = SearchResultSet.empty
+    var searchResultSet: HomeScreenSearchResultSet = HomeScreenSearchResultSet.empty {
+        didSet {
+            AssertIsOnMainThread()
+
+            updateSeparators()
+        }
+    }
 
     var uiDatabaseConnection: YapDatabaseConnection {
         return OWSPrimaryStorage.shared().uiDatabaseConnection
@@ -76,6 +82,7 @@ class ConversationSearchViewController: UITableViewController, BlockListCacheDel
                                                object: nil)
 
         applyTheme()
+        updateSeparators()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -114,6 +121,14 @@ class ConversationSearchViewController: UITableViewController, BlockListCacheDel
 
         self.view.backgroundColor = Theme.backgroundColor
         self.tableView.backgroundColor = Theme.backgroundColor
+    }
+
+    private func updateSeparators() {
+        AssertIsOnMainThread()
+
+        self.tableView.separatorStyle = (searchResultSet.isEmpty
+            ? UITableViewCell.SeparatorStyle.none
+            : UITableViewCell.SeparatorStyle.singleLine)
     }
 
     // MARK: UITableViewDelegate
@@ -377,15 +392,15 @@ class ConversationSearchViewController: UITableViewController, BlockListCacheDel
 
     private func updateSearchResults(searchText: String) {
         guard searchText.stripped.count > 0 else {
-            self.searchResultSet = SearchResultSet.empty
+            self.searchResultSet = HomeScreenSearchResultSet.empty
             self.tableView.reloadData()
             return
         }
 
-        var searchResults: SearchResultSet?
+        var searchResults: HomeScreenSearchResultSet?
         self.uiDatabaseConnection.asyncRead({[weak self] transaction in
             guard let strongSelf = self else { return }
-            searchResults = strongSelf.searcher.results(searchText: searchText, transaction: transaction, contactsManager: strongSelf.contactsManager)
+            searchResults = strongSelf.searcher.searchForHomeScreen(searchText: searchText, transaction: transaction, contactsManager: strongSelf.contactsManager)
         },
                                             completionBlock: { [weak self] in
                                                 AssertIsOnMainThread()

@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "RegistrationViewController.h"
@@ -12,8 +12,8 @@
 #import "UIView+OWS.h"
 #import "ViewControllerUtils.h"
 #import <SignalMessaging/Environment.h>
-#import <SignalMessaging/NSString+OWS.h>
 #import <SignalMessaging/OWSNavigationController.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/SignalServiceKit-Swift.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -92,7 +92,6 @@ NSString *const kKeychainKey_LastRegisteredPhoneNumber = @"kKeychainKey_LastRegi
     headerLabel.textColor = [UIColor whiteColor];
     headerLabel.font = [UIFont ows_mediumFontWithSize:ScaleFromIPhone5To7Plus(20.f, 24.f)];
 
-#ifdef SHOW_LEGAL_TERMS_LINK
     NSString *legalTopMatterFormat = NSLocalizedString(@"REGISTRATION_LEGAL_TOP_MATTER_FORMAT",
         @"legal disclaimer, embeds a tappable {{link title}} which is styled as a hyperlink");
     NSString *legalTopMatterLinkWord = NSLocalizedString(
@@ -117,12 +116,9 @@ NSString *const kKeychainKey_LastRegisteredPhoneNumber = @"kKeychainKey_LastRegi
     UITapGestureRecognizer *tapGesture =
         [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(didTapLegalTerms:)];
     [legalTopMatterLabel addGestureRecognizer:tapGesture];
-#endif
 
     UIStackView *headerContent = [[UIStackView alloc] initWithArrangedSubviews:@[ headerLabel ]];
-#ifdef SHOW_LEGAL_TERMS_LINK
     [headerContent addArrangedSubview:legalTopMatterLabel];
-#endif
     headerContent.axis = UILayoutConstraintAxisVertical;
     headerContent.alignment = UIStackViewAlignmentCenter;
     headerContent.spacing = ScaleFromIPhone5To7Plus(8, 16);
@@ -268,7 +264,6 @@ NSString *const kKeychainKey_LastRegisteredPhoneNumber = @"kKeychainKey_LastRegi
     [spinnerView autoPinTrailingToSuperviewMarginWithInset:20.f];
     [spinnerView stopAnimating];
 
-#ifdef SHOW_LEGAL_TERMS_LINK
     NSString *bottomTermsLinkText = NSLocalizedString(@"REGISTRATION_LEGAL_TERMS_LINK",
         @"one line label below submit button on registration screen, which links to an external webpage.");
     UIButton *bottomLegalLinkButton = [UIButton new];
@@ -287,7 +282,6 @@ NSString *const kKeychainKey_LastRegisteredPhoneNumber = @"kKeychainKey_LastRegi
                             withOffset:ScaleFromIPhone5To7Plus(8, 12)];
     [bottomLegalLinkButton setCompressionResistanceHigh];
     [bottomLegalLinkButton setContentHuggingHigh];
-#endif
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -414,7 +408,8 @@ NSString *const kKeychainKey_LastRegisteredPhoneNumber = @"kKeychainKey_LastRegi
     NSString *phoneNumber = [NSString stringWithFormat:@"%@%@", _callingCode, phoneNumberText];
     PhoneNumber *localNumber = [PhoneNumber tryParsePhoneNumberFromUserSpecifiedText:phoneNumber];
     NSString *parsedPhoneNumber = localNumber.toE164;
-    if (parsedPhoneNumber.length < 1) {
+    if (parsedPhoneNumber.length < 1
+        || ![[PhoneNumberValidator new] isValidForRegistrationWithPhoneNumber:localNumber]) {
         [OWSAlerts showAlertWithTitle:
                        NSLocalizedString(@"REGISTRATION_VIEW_INVALID_PHONE_NUMBER_ALERT_TITLE",
                            @"Title of alert indicating that users needs to enter a valid phone number to register.")
@@ -502,6 +497,7 @@ NSString *const kKeychainKey_LastRegisteredPhoneNumber = @"kKeychainKey_LastRegi
 {
     CountryCodeViewController *countryCodeController = [CountryCodeViewController new];
     countryCodeController.countryCodeDelegate = self;
+    countryCodeController.interfaceOrientationMask = UIInterfaceOrientationMaskPortrait;
     OWSNavigationController *navigationController =
         [[OWSNavigationController alloc] initWithRootViewController:countryCodeController];
     [self presentViewController:navigationController animated:YES completion:nil];
@@ -627,6 +623,13 @@ NSString *const kKeychainKey_LastRegisteredPhoneNumber = @"kKeychainKey_LastRegi
 - (UIStatusBarStyle)preferredStatusBarStyle
 {
     return UIStatusBarStyleLightContent;
+}
+
+#pragma mark - Orientation
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    return UIInterfaceOrientationMaskPortrait;
 }
 
 @end

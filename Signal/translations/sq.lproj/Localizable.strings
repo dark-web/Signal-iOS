@@ -311,8 +311,14 @@
 /* Label for generic done button. */
 "BUTTON_DONE" = "U bë";
 
+/* Label for redo button. */
+"BUTTON_REDO" = "Ribëje";
+
 /* Button text to enable batch selection mode */
 "BUTTON_SELECT" = "Përzgjidhni";
+
+/* Label for undo button. */
+"BUTTON_UNDO" = "Zhbëje";
 
 /* Label for button that lets users call a contact again. */
 "CALL_AGAIN_BUTTON_TITLE" = "Rithirre";
@@ -1074,6 +1080,18 @@
 /* Title for the home view's default mode. */
 "HOME_VIEW_TITLE_INBOX" = "Signal";
 
+/* Label for brush button in image editor. */
+"IMAGE_EDITOR_BRUSH_BUTTON" = "Lyeje";
+
+/* Label for crop button in image editor. */
+"IMAGE_EDITOR_CROP_BUTTON" = "Qethe";
+
+/* Momentarily shown to the user when attempting to select more images than is allowed. Embeds {{max number of items}} that can be shared. */
+"IMAGE_PICKER_CAN_SELECT_NO_MORE_TOAST_FORMAT" = "S’mund të ndani me të tjerët më tepër se %@ objekte.";
+
+/* alert title */
+"IMAGE_PICKER_FAILED_TO_PROCESS_ATTACHMENTS" = "S’u arrit të përzgjidhej bashkëngjitje.";
+
 /* Call setup status label */
 "IN_CALL_CONNECTING" = "Po lidhet…";
 
@@ -1166,6 +1184,9 @@
 
 /* Navigation title when scanning QR code to add new device. */
 "LINK_NEW_DEVICE_TITLE" = "Lidhni Pajisje të Re";
+
+/* Label for link previews with an unknown host. */
+"LINK_PREVIEW_UNKNOWN_DOMAIN" = "Paraparje Lidhjeje";
 
 /* Menu item and navbar title for the device manager */
 "LINKED_DEVICES_TITLE" = "Pajisje të Lidhura";
@@ -1453,6 +1474,9 @@
 
 /* Label for a button that lets users search for contacts by phone number */
 "NO_CONTACTS_SEARCH_BY_PHONE_NUMBER" = "Gjeni Kontakte sipas Numri Telefoni";
+
+/* Label for 1:1 conversation with yourself. */
+"NOTE_TO_SELF" = "Shënim për Veten";
 
 /* Lock screen notification text presented after user powers on their device without unlocking. Embeds {{device model}} (either 'iPad' or 'iPhone') */
 "NOTIFICATION_BODY_PHONE_LOCKED_FORMAT" = "Mund të keni marrë mesazhe teksa %@ po rinisej.";
@@ -2066,6 +2090,15 @@
 /* table cell label */
 "SETTINGS_LEGAL_TERMS_CELL" = "Kushte & Rregulla Privatësie";
 
+/* Setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS" = "Dërgo Paraparje Lidhjesh";
+
+/* Footer for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_FOOTER" = "Paraparjet mbulohen për lidhje Imgur, Instagram, Reddit, dhe YouTube.";
+
+/* Header for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_HEADER" = "Paraparje Lidhjesh";
+
 /* Title for settings activity */
 "SETTINGS_NAV_BAR_TITLE" = "Rregullime";
 
@@ -2342,6 +2375,15 @@
 /* button label shown one time, after upgrade */
 "UPGRADE_EXPERIENCE_ENABLE_TYPING_INDICATOR_BUTTON" = "Aktivizo Indikatorë Shtypjeje";
 
+/* Body text for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_DESCRIPTION" = "Optional link previews are now supported for some of the most popular sites on the Internet.";
+
+/* Subtitle for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_SUBTITLE" = "You can disable or enable this feature anytime in your Signal settings (Privacy > Send link previews).";
+
+/* Header for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_TITLE" = "Paraparje Lidhjesh";
+
 /* Description for notification audio customization */
 "UPGRADE_EXPERIENCE_INTRODUCING_NOTIFICATION_AUDIO_DESCRIPTION" = "Tani mund të zgjidhni tinguj parazgjedhje dhe me bazë bisede për njoftimet, dhe thirrjet do të respektojnë zilen që keni zgjedhur për çdo kontakt sistemi.";
 
@@ -2386,9 +2428,6 @@
 
 /* Title for the alert indicating that user should upgrade iOS. */
 "UPGRADE_IOS_ALERT_TITLE" = "Përmirësoni iOS-in";
-
-/* No comment provided by engineer. */
-"Upgrading Signal ..." = "Po përmirësohet Signal-i…";
 
 /* button text for back button on verification view */
 "VERIFICATION_BACK_BUTTON" = "Mbrapsht";

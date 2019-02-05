@@ -219,14 +219,11 @@ NS_ASSUME_NONNULL_BEGIN
 {
     NSString *path = [textSecureAccountsAPI stringByAppendingString:textSecureAttributesAPI];
 
-    NSString *signalingKey = self.tsAccountManager.signalingKey;
-    OWSAssertDebug(signalingKey.length > 0);
     NSString *authKey = self.tsAccountManager.serverAuthToken;
     OWSAssertDebug(authKey.length > 0);
     NSString *_Nullable pin = [self.ows2FAManager pinCode];
 
-    NSDictionary<NSString *, id> *accountAttributes =
-        [self accountAttributesWithPin:pin signalingKey:signalingKey authKey:authKey];
+    NSDictionary<NSString *, id> *accountAttributes = [self accountAttributesWithPin:pin authKey:authKey];
 
     return [TSRequest requestWithUrl:[NSURL URLWithString:path] method:@"PUT" parameters:accountAttributes];
 }
@@ -247,7 +244,37 @@ NS_ASSUME_NONNULL_BEGIN
                                phoneNumber];
     TSRequest *request = [TSRequest requestWithUrl:[NSURL URLWithString:path] method:@"GET" parameters:@{}];
     request.shouldHaveAuthorizationHeaders = NO;
+
+    if (transport == TSVerificationTransportVoice) {
+        NSString *_Nullable localizationHeader = [self voiceCodeLocalizationHeader];
+        if (localizationHeader.length > 0) {
+            [request setValue:localizationHeader forHTTPHeaderField:@"Accept-Language"];
+        }
+    }
+
     return request;
+}
+
++ (nullable NSString *)voiceCodeLocalizationHeader
+{
+    NSLocale *locale = [NSLocale currentLocale];
+    NSString *_Nullable languageCode = [locale objectForKey:NSLocaleLanguageCode];
+    NSString *_Nullable countryCode = [locale objectForKey:NSLocaleCountryCode];
+
+    if (!languageCode) {
+        return nil;
+    }
+
+    OWSAssertDebug([languageCode rangeOfString:@"-"].location == NSNotFound);
+
+    if (!countryCode) {
+        // In the absence of a country code, just send a language code.
+        return languageCode;
+    }
+
+    OWSAssertDebug(languageCode.length == 2);
+    OWSAssertDebug(countryCode.length == 2);
+    return [NSString stringWithFormat:@"%@-%@", languageCode, countryCode];
 }
 
 + (NSString *)stringForTransport:(TSVerificationTransport)transport
@@ -263,18 +290,16 @@ NS_ASSUME_NONNULL_BEGIN
 + (TSRequest *)verifyCodeRequestWithVerificationCode:(NSString *)verificationCode
                                            forNumber:(NSString *)phoneNumber
                                                  pin:(nullable NSString *)pin
-                                        signalingKey:(NSString *)signalingKey
                                              authKey:(NSString *)authKey
 {
     OWSAssertDebug(verificationCode.length > 0);
     OWSAssertDebug(phoneNumber.length > 0);
-    OWSAssertDebug(signalingKey.length > 0);
     OWSAssertDebug(authKey.length > 0);
 
     NSString *path = [NSString stringWithFormat:@"%@/code/%@", textSecureAccountsAPI, verificationCode];
 
     NSMutableDictionary<NSString *, id> *accountAttributes =
-        [[self accountAttributesWithPin:pin signalingKey:signalingKey authKey:authKey] mutableCopy];
+        [[self accountAttributesWithPin:pin authKey:authKey] mutableCopy];
     [accountAttributes removeObjectForKey:@"AuthKey"];
 
     TSRequest *request =
@@ -286,10 +311,8 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 + (NSDictionary<NSString *, id> *)accountAttributesWithPin:(nullable NSString *)pin
-                                              signalingKey:(NSString *)signalingKey
                                                    authKey:(NSString *)authKey
 {
-    OWSAssertDebug(signalingKey.length > 0);
     OWSAssertDebug(authKey.length > 0);
     uint32_t registrationId = [self.tsAccountManager getOrGenerateRegistrationId];
 
@@ -304,8 +327,8 @@ NS_ASSUME_NONNULL_BEGIN
     }
     BOOL allowUnrestrictedUD = [self.udManager shouldAllowUnrestrictedAccessLocal] && udAccessKey != nil;
 
+    // We no longer include the signalingKey.
     NSMutableDictionary *accountAttributes = [@{
-        @"signalingKey" : signalingKey,
         @"AuthKey" : authKey,
         @"voice" : @(YES), // all Signal-iOS clients support voice
         @"video" : @(YES), // all Signal-iOS clients support WebRTC-based voice and video calls.

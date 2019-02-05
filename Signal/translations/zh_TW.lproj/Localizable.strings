@@ -311,8 +311,14 @@
 /* Label for generic done button. */
 "BUTTON_DONE" = "完成";
 
+/* Label for redo button. */
+"BUTTON_REDO" = "重做";
+
 /* Button text to enable batch selection mode */
 "BUTTON_SELECT" = "選擇";
+
+/* Label for undo button. */
+"BUTTON_UNDO" = "復原";
 
 /* Label for button that lets users call a contact again. */
 "CALL_AGAIN_BUTTON_TITLE" = "重撥電話";
@@ -1074,6 +1080,18 @@
 /* Title for the home view's default mode. */
 "HOME_VIEW_TITLE_INBOX" = "Signal";
 
+/* Label for brush button in image editor. */
+"IMAGE_EDITOR_BRUSH_BUTTON" = "筆刷";
+
+/* Label for crop button in image editor. */
+"IMAGE_EDITOR_CROP_BUTTON" = "裁剪";
+
+/* Momentarily shown to the user when attempting to select more images than is allowed. Embeds {{max number of items}} that can be shared. */
+"IMAGE_PICKER_CAN_SELECT_NO_MORE_TOAST_FORMAT" = "你無法分享超過%@個項目。";
+
+/* alert title */
+"IMAGE_PICKER_FAILED_TO_PROCESS_ATTACHMENTS" = "無法選擇附檔。";
+
 /* Call setup status label */
 "IN_CALL_CONNECTING" = "連接中...";
 
@@ -1166,6 +1184,9 @@
 
 /* Navigation title when scanning QR code to add new device. */
 "LINK_NEW_DEVICE_TITLE" = "連結新的裝置";
+
+/* Label for link previews with an unknown host. */
+"LINK_PREVIEW_UNKNOWN_DOMAIN" = "連結預覽";
 
 /* Menu item and navbar title for the device manager */
 "LINKED_DEVICES_TITLE" = "已連結的裝置";
@@ -1453,6 +1474,9 @@
 
 /* Label for a button that lets users search for contacts by phone number */
 "NO_CONTACTS_SEARCH_BY_PHONE_NUMBER" = "透過手機號碼搜尋聯絡人";
+
+/* Label for 1:1 conversation with yourself. */
+"NOTE_TO_SELF" = "給自己的筆記";
 
 /* Lock screen notification text presented after user powers on their device without unlocking. Embeds {{device model}} (either 'iPad' or 'iPhone') */
 "NOTIFICATION_BODY_PHONE_LOCKED_FORMAT" = "當你的%@重新起動時，你還是可以接收訊息。";
@@ -2066,6 +2090,15 @@
 /* table cell label */
 "SETTINGS_LEGAL_TERMS_CELL" = "條款和隱私政策";
 
+/* Setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS" = "傳送連結預覽";
+
+/* Footer for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_FOOTER" = "預覽功能支援 Imgur、Instagram、 Reddit 及 YouTube 的連結。";
+
+/* Header for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_HEADER" = "連結預覽";
+
 /* Title for settings activity */
 "SETTINGS_NAV_BAR_TITLE" = "設定";
 
@@ -2115,7 +2148,7 @@
 "SETTINGS_SCREEN_LOCK_SWITCH_LABEL" = "螢幕鎖定";
 
 /* No comment provided by engineer. */
-"SETTINGS_SCREEN_SECURITY" = "開啟螢幕鎖定功能";
+"SETTINGS_SCREEN_SECURITY" = "開啟程式切換時隱藏畫面功能";
 
 /* No comment provided by engineer. */
 "SETTINGS_SCREEN_SECURITY_DETAIL" = "避免Signal預覽畫面在應用軟體切換時顯示。";
@@ -2342,6 +2375,15 @@
 /* button label shown one time, after upgrade */
 "UPGRADE_EXPERIENCE_ENABLE_TYPING_INDICATOR_BUTTON" = "開啟打字狀態";
 
+/* Body text for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_DESCRIPTION" = "Optional link previews are now supported for some of the most popular sites on the Internet.";
+
+/* Subtitle for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_SUBTITLE" = "You can disable or enable this feature anytime in your Signal settings (Privacy > Send link previews).";
+
+/* Header for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_TITLE" = "連結預覽";
+
 /* Description for notification audio customization */
 "UPGRADE_EXPERIENCE_INTRODUCING_NOTIFICATION_AUDIO_DESCRIPTION" = "您現在可以選擇預設和每個會話通知音效，並且通話將使用您為每個系統聯繫人選擇的鈴聲。";
 
@@ -2386,9 +2428,6 @@
 
 /* Title for the alert indicating that user should upgrade iOS. */
 "UPGRADE_IOS_ALERT_TITLE" = "更新 iOS";
-
-/* No comment provided by engineer. */
-"Upgrading Signal ..." = "正在升級 Signal...";
 
 /* button text for back button on verification view */
 "VERIFICATION_BACK_BUTTON" = "退後";

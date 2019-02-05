@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "ConversationViewLayout.h"
@@ -26,6 +26,7 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType);
 @class ConversationViewCell;
 @class DisplayableText;
 @class OWSAudioMessageView;
+@class OWSLinkPreview;
 @class OWSQuotedReplyModel;
 @class OWSUnreadIndicator;
 @class TSAttachment;
@@ -46,6 +47,8 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType);
 @property (nonatomic, readonly) CGSize mediaSize;
 
 @property (nonatomic, readonly, nullable) NSString *caption;
+
+@property (nonatomic, readonly) BOOL isFailedDownload;
 
 @end
 
@@ -91,6 +94,8 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType);
 
 - (void)clearCachedLayoutState;
 
+@property (nonatomic, readonly) BOOL hasCachedLayoutState;
+
 #pragma mark - Audio Playback
 
 @property (nonatomic, weak) OWSAudioMessageView *lastAudioMessageView;
@@ -116,6 +121,9 @@ NSString *NSStringForOWSMessageCellType(OWSMessageCellType cellType);
 @property (nonatomic) BOOL didCellMediaFailToLoad;
 
 @property (nonatomic, readonly, nullable) ContactShareViewModel *contactShare;
+
+@property (nonatomic, readonly, nullable) OWSLinkPreview *linkPreview;
+@property (nonatomic, readonly, nullable) TSAttachment *linkPreviewAttachment;
 
 @property (nonatomic, readonly, nullable) NSString *systemMessageText;
 

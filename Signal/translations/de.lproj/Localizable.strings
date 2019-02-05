@@ -99,7 +99,7 @@
 "ATTACHMENT" = "Anhang";
 
 /* One-line label indicating the user can add no more text to the attachment caption. */
-"ATTACHMENT_APPROVAL_CAPTION_LENGTH_LIMIT_REACHED" = "Beschriftungsgrenze erreicht.";
+"ATTACHMENT_APPROVAL_CAPTION_LENGTH_LIMIT_REACHED" = "Beschriftungslimit erreicht.";
 
 /* placeholder text for an empty captioning field */
 "ATTACHMENT_APPROVAL_CAPTION_PLACEHOLDER" = "Beschriftung hinzufügen …";
@@ -311,8 +311,14 @@
 /* Label for generic done button. */
 "BUTTON_DONE" = "Fertig";
 
+/* Label for redo button. */
+"BUTTON_REDO" = "Wiederherstellen";
+
 /* Button text to enable batch selection mode */
 "BUTTON_SELECT" = "Auswählen";
+
+/* Label for undo button. */
+"BUTTON_UNDO" = "Rückgängig";
 
 /* Label for button that lets users call a contact again. */
 "CALL_AGAIN_BUTTON_TITLE" = "Erneut anrufen";
@@ -1074,6 +1080,18 @@
 /* Title for the home view's default mode. */
 "HOME_VIEW_TITLE_INBOX" = "Signal";
 
+/* Label for brush button in image editor. */
+"IMAGE_EDITOR_BRUSH_BUTTON" = "Pinsel";
+
+/* Label for crop button in image editor. */
+"IMAGE_EDITOR_CROP_BUTTON" = "Zuschneiden";
+
+/* Momentarily shown to the user when attempting to select more images than is allowed. Embeds {{max number of items}} that can be shared. */
+"IMAGE_PICKER_CAN_SELECT_NO_MORE_TOAST_FORMAT" = "Du kannst nicht mehr als %@ Elemente teilen.";
+
+/* alert title */
+"IMAGE_PICKER_FAILED_TO_PROCESS_ATTACHMENTS" = "Anhangsauswahl gescheitert.";
+
 /* Call setup status label */
 "IN_CALL_CONNECTING" = "Verbinden …";
 
@@ -1166,6 +1184,9 @@
 
 /* Navigation title when scanning QR code to add new device. */
 "LINK_NEW_DEVICE_TITLE" = "Neues Gerät koppeln";
+
+/* Label for link previews with an unknown host. */
+"LINK_PREVIEW_UNKNOWN_DOMAIN" = "Link-Vorschau";
 
 /* Menu item and navbar title for the device manager */
 "LINKED_DEVICES_TITLE" = "Gekoppelte Geräte";
@@ -1264,7 +1285,7 @@
 "MESSAGE_METADATA_VIEW_MESSAGE_STATUS_SENT" = "Gesendet";
 
 /* Status label for messages which were skipped. */
-"MESSAGE_METADATA_VIEW_MESSAGE_STATUS_SKIPPED" = "Übersprungen";
+"MESSAGE_METADATA_VIEW_MESSAGE_STATUS_SKIPPED" = "Ausgelassen";
 
 /* Status label for messages which are uploading. */
 "MESSAGE_METADATA_VIEW_MESSAGE_STATUS_UPLOADING" = "Wird hochgeladen";
@@ -1300,7 +1321,7 @@
 "MESSAGE_STATUS_READ" = "Gelesen";
 
 /* message status if message delivery to a recipient is skipped. We skip delivering group messages to users who have left the group or unregistered their Signal account. */
-"MESSAGE_STATUS_RECIPIENT_SKIPPED" = "Übersprungen";
+"MESSAGE_STATUS_RECIPIENT_SKIPPED" = "Ausgelassen";
 
 /* Label indicating that a message failed to send. */
 "MESSAGE_STATUS_SEND_FAILED" = "Versand gescheitert";
@@ -1453,6 +1474,9 @@
 
 /* Label for a button that lets users search for contacts by phone number */
 "NO_CONTACTS_SEARCH_BY_PHONE_NUMBER" = "Kontakte über Rufnummer suchen";
+
+/* Label for 1:1 conversation with yourself. */
+"NOTE_TO_SELF" = "Notiz an mich";
 
 /* Lock screen notification text presented after user powers on their device without unlocking. Embeds {{device model}} (either 'iPad' or 'iPhone') */
 "NOTIFICATION_BODY_PHONE_LOCKED_FORMAT" = "Du hast eventuell Nachrichten erhalten, während dein %@ neu gestartet wurde.";
@@ -2066,6 +2090,15 @@
 /* table cell label */
 "SETTINGS_LEGAL_TERMS_CELL" = "Bedingungen & Datenschutzerklärung";
 
+/* Setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS" = "Link-Vorschauen senden";
+
+/* Footer for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_FOOTER" = "Vorschauen werden unterstützt für Links von Imgur, Instagram, Reddit und YouTube.";
+
+/* Header for setting for enabling & disabling link previews. */
+"SETTINGS_LINK_PREVIEWS_HEADER" = "Link-Vorschauen";
+
 /* Title for settings activity */
 "SETTINGS_NAV_BAR_TITLE" = "Einstellungen";
 
@@ -2304,7 +2337,7 @@
 "UNLINK_ACTION" = "Entkoppeln";
 
 /* Alert message to confirm unlinking a device */
-"UNLINK_CONFIRMATION_ALERT_BODY" = "Dieses Gerät wird keine Nachrichten mehr versenden oder empfangen können sobald es entkoppelt wird.";
+"UNLINK_CONFIRMATION_ALERT_BODY" = "Dieses Gerät wird keine Nachrichten mehr versenden oder empfangen können sobald es entkoppelt ist.";
 
 /* Alert title for confirming device deletion */
 "UNLINK_CONFIRMATION_ALERT_TITLE" = "»%@« entkoppeln?";
@@ -2341,6 +2374,15 @@
 
 /* button label shown one time, after upgrade */
 "UPGRADE_EXPERIENCE_ENABLE_TYPING_INDICATOR_BUTTON" = "Tipp-Indikatoren anschalten";
+
+/* Body text for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_DESCRIPTION" = "Optional link previews are now supported for some of the most popular sites on the Internet.";
+
+/* Subtitle for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_SUBTITLE" = "You can disable or enable this feature anytime in your Signal settings (Privacy > Send link previews).";
+
+/* Header for upgrading users */
+"UPGRADE_EXPERIENCE_INTRODUCING_LINK_PREVIEWS_TITLE" = "Link-Vorschauen";
 
 /* Description for notification audio customization */
 "UPGRADE_EXPERIENCE_INTRODUCING_NOTIFICATION_AUDIO_DESCRIPTION" = "Du kannst nun sowohl Standardmitteilungstöne, als auch Mitteilungstöne je Unterhaltung auswählen. Für Anrufe werden jene Klingeltöne verwendet, die du für deine Systemkontakte jeweils ausgewählt hast.";
@@ -2386,9 +2428,6 @@
 
 /* Title for the alert indicating that user should upgrade iOS. */
 "UPGRADE_IOS_ALERT_TITLE" = "iOS aktualisieren";
-
-/* No comment provided by engineer. */
-"Upgrading Signal ..." = "Signal wird aktualisiert …";
 
 /* button text for back button on verification view */
 "VERIFICATION_BACK_BUTTON" = "Zurück";

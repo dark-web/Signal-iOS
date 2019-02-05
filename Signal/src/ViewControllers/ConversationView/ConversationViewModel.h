@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 NS_ASSUME_NONNULL_BEGIN
@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class ConversationStyle;
 @class ConversationViewModel;
 @class OWSQuotedReplyModel;
+@class TSOutgoingMessage;
 @class TSThread;
 @class ThreadDynamicInteractions;
 
@@ -69,6 +70,10 @@ typedef NS_ENUM(NSUInteger, ConversationUpdateItemType) {
 - (void)conversationViewModelDidLoadPrevPage;
 - (void)conversationViewModelRangeDidChange;
 
+// Called after the view model recovers from a severe error
+// to prod the view to reset its scroll state, etc.
+- (void)conversationViewModelDidReset;
+
 - (BOOL)isObservingVMUpdates;
 
 - (ConversationStyle *)conversationStyle;
@@ -101,6 +106,8 @@ typedef NS_ENUM(NSUInteger, ConversationUpdateItemType) {
 - (BOOL)canLoadMoreItems;
 
 - (nullable NSIndexPath *)ensureLoadWindowContainsQuotedReply:(OWSQuotedReplyModel *)quotedReply;
+
+- (void)appendUnsavedOutgoingTextMessage:(TSOutgoingMessage *)outgoingMessage;
 
 @end
 

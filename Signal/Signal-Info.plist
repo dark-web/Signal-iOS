@@ -7,9 +7,9 @@
 		<key>CarthageVersion</key>
 		<string>0.31.2</string>
 		<key>OSXVersion</key>
-		<string>10.14.1</string>
+		<string>10.14.2</string>
 		<key>WebRTCCommit</key>
-		<string>ca71024b4993ba95e3e6b8d0758004cffc54ddaf M70</string>
+		<string>aa8bee9bd6f69e388a9ca7506b8702ef8ab7f195 M71</string>
 	</dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
@@ -30,7 +30,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.33.1</string>
+	<string>2.35.0</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -47,7 +47,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>2.33.1.0</string>
+	<string>2.35.0.8</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LOGS_EMAIL</key>
@@ -148,6 +148,8 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>

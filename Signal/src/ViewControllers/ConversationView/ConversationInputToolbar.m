@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "ConversationInputToolbar.h"
@@ -10,9 +10,11 @@
 #import "Signal-Swift.h"
 #import "UIColor+OWS.h"
 #import "UIFont+OWS.h"
-#import "UIView+OWS.h"
 #import "ViewControllerUtils.h"
+#import <PromiseKit/AnyPromise.h>
 #import <SignalMessaging/OWSFormat.h>
+#import <SignalMessaging/SignalMessaging-Swift.h>
+#import <SignalMessaging/UIView+OWS.h>
 #import <SignalServiceKit/NSTimer+OWS.h>
 #import <SignalServiceKit/TSQuotedMessage.h>
 
@@ -25,23 +27,37 @@ const CGFloat kMaxTextViewHeight = 98;
 
 #pragma mark -
 
-@interface ConversationInputToolbar () <ConversationTextViewToolbarDelegate, QuotedReplyPreviewDelegate>
+@interface InputLinkPreview : NSObject
+
+@property (nonatomic) NSString *previewUrl;
+@property (nonatomic, nullable) OWSLinkPreviewDraft *linkPreviewDraft;
+
+@end
+
+#pragma mark -
+
+@implementation InputLinkPreview
+
+@end
+
+#pragma mark -
+
+@interface ConversationInputToolbar () <ConversationTextViewToolbarDelegate,
+    QuotedReplyPreviewDelegate,
+    LinkPreviewViewDraftDelegate>
 
 @property (nonatomic, readonly) ConversationStyle *conversationStyle;
 
 @property (nonatomic, readonly) ConversationInputTextView *inputTextView;
-@property (nonatomic, readonly) UIStackView *contentRows;
-@property (nonatomic, readonly) UIStackView *composeRow;
+@property (nonatomic, readonly) UIStackView *hStack;
 @property (nonatomic, readonly) UIButton *attachmentButton;
 @property (nonatomic, readonly) UIButton *sendButton;
 @property (nonatomic, readonly) UIButton *voiceMemoButton;
+@property (nonatomic, readonly) UIView *quotedReplyWrapper;
+@property (nonatomic, readonly) UIView *linkPreviewWrapper;
 
 @property (nonatomic) CGFloat textViewHeight;
 @property (nonatomic, readonly) NSLayoutConstraint *textViewHeightConstraint;
-
-#pragma mark -
-
-@property (nonatomic, nullable) UIView *quotedMessagePreview;
 
 #pragma mark - Voice Memo Recording UI
 
@@ -52,11 +68,13 @@ const CGFloat kMaxTextViewHeight = 98;
 @property (nonatomic, nullable) UILabel *recordingLabel;
 @property (nonatomic) BOOL isRecordingVoiceMemo;
 @property (nonatomic) CGPoint voiceMemoGestureStartLocation;
+@property (nonatomic, nullable) NSArray<NSLayoutConstraint *> *layoutContraints;
+@property (nonatomic) UIEdgeInsets receivedSafeAreaInsets;
+@property (nonatomic, nullable) InputLinkPreview *inputLinkPreview;
+@property (nonatomic) BOOL wasLinkPreviewCancelled;
+@property (nonatomic, nullable, weak) LinkPreviewView *linkPreviewView;
 
 @end
-
-#pragma mark -
-
 
 #pragma mark -
 
@@ -67,7 +85,8 @@ const CGFloat kMaxTextViewHeight = 98;
     self = [super initWithFrame:CGRectZero];
 
     _conversationStyle = conversationStyle;
-    
+    _receivedSafeAreaInsets = UIEdgeInsetsZero;
+
     if (self) {
         [self createContents];
     }
@@ -101,10 +120,11 @@ const CGFloat kMaxTextViewHeight = 98;
     self.autoresizingMask = UIViewAutoresizingFlexibleHeight;
 
     _inputTextView = [ConversationInputTextView new];
-    self.inputTextView.layer.cornerRadius = kMinTextViewHeight / 2.0f;
     self.inputTextView.textViewToolbarDelegate = self;
     self.inputTextView.font = [UIFont ows_dynamicTypeBodyFont];
-    [self.inputTextView setContentHuggingHorizontalLow];
+    self.inputTextView.backgroundColor = Theme.toolbarBackgroundColor;
+    [self.inputTextView setContentHuggingLow];
+    [self.inputTextView setCompressionResistanceLow];
 
     _textViewHeightConstraint = [self.inputTextView autoSetDimension:ALDimensionHeight toSize:kMinTextViewHeight];
 
@@ -150,21 +170,68 @@ const CGFloat kMaxTextViewHeight = 98;
 
     self.userInteractionEnabled = YES;
 
-    _composeRow = [[UIStackView alloc]
-        initWithArrangedSubviews:@[ self.attachmentButton, self.inputTextView, self.voiceMemoButton, self.sendButton ]];
-    self.composeRow.axis = UILayoutConstraintAxisHorizontal;
-    self.composeRow.layoutMarginsRelativeArrangement = YES;
-    self.composeRow.layoutMargins = UIEdgeInsetsMake(6, 6, 6, 6);
-    self.composeRow.alignment = UIStackViewAlignmentBottom;
-    self.composeRow.spacing = 8;
+    _quotedReplyWrapper = [UIView containerView];
+    self.quotedReplyWrapper.hidden = YES;
+    [self.quotedReplyWrapper setContentHuggingHorizontalLow];
+    [self.quotedReplyWrapper setCompressionResistanceHorizontalLow];
 
-    _contentRows = [[UIStackView alloc] initWithArrangedSubviews:@[ self.composeRow ]];
-    self.contentRows.axis = UILayoutConstraintAxisVertical;
+    _linkPreviewWrapper = [UIView containerView];
+    self.linkPreviewWrapper.hidden = YES;
+    [self.linkPreviewWrapper setContentHuggingHorizontalLow];
+    [self.linkPreviewWrapper setCompressionResistanceHorizontalLow];
 
-    [self addSubview:self.contentRows];
-    [self.contentRows autoPinEdgesToSuperviewEdges];
+    // V Stack
+    UIStackView *vStack = [[UIStackView alloc]
+        initWithArrangedSubviews:@[ self.quotedReplyWrapper, self.linkPreviewWrapper, self.inputTextView ]];
+    vStack.axis = UILayoutConstraintAxisVertical;
+    [vStack setContentHuggingHorizontalLow];
+    [vStack setCompressionResistanceHorizontalLow];
 
-    [self ensureShouldShowVoiceMemoButtonAnimated:NO];
+    for (UIView *button in @[ self.attachmentButton, self.voiceMemoButton, self.sendButton ]) {
+        [button setContentHuggingHorizontalHigh];
+        [button setCompressionResistanceHorizontalHigh];
+    }
+
+    // V Stack Wrapper
+    const CGFloat vStackRounding = 18.f;
+    UIView *vStackWrapper = [UIView containerView];
+    vStackWrapper.layer.cornerRadius = vStackRounding;
+    vStackWrapper.layer.borderColor = Theme.secondaryColor.CGColor;
+    vStackWrapper.layer.borderWidth = CGHairlineWidth();
+    vStackWrapper.clipsToBounds = YES;
+    [vStackWrapper addSubview:vStack];
+    [vStack ows_autoPinToSuperviewEdges];
+    [vStackWrapper setContentHuggingHorizontalLow];
+    [vStackWrapper setCompressionResistanceHorizontalLow];
+
+    // H Stack
+    _hStack = [[UIStackView alloc]
+        initWithArrangedSubviews:@[ self.attachmentButton, vStackWrapper, self.voiceMemoButton, self.sendButton ]];
+    self.hStack.axis = UILayoutConstraintAxisHorizontal;
+    self.hStack.layoutMarginsRelativeArrangement = YES;
+    self.hStack.layoutMargins = UIEdgeInsetsMake(6, 6, 6, 6);
+    self.hStack.alignment = UIStackViewAlignmentBottom;
+    self.hStack.spacing = 8;
+
+    [self addSubview:self.hStack];
+    [self.hStack autoPinEdgeToSuperviewEdge:ALEdgeTop];
+    [self.hStack autoPinEdgeToSuperviewSafeArea:ALEdgeBottom];
+    [self.hStack setContentHuggingHorizontalLow];
+    [self.hStack setCompressionResistanceHorizontalLow];
+
+    // See comments on updateContentLayout:.
+    if (@available(iOS 11, *)) {
+        vStack.insetsLayoutMarginsFromSafeArea = NO;
+        vStackWrapper.insetsLayoutMarginsFromSafeArea = NO;
+        self.hStack.insetsLayoutMarginsFromSafeArea = NO;
+        self.insetsLayoutMarginsFromSafeArea = NO;
+    }
+    vStack.preservesSuperviewLayoutMargins = NO;
+    vStackWrapper.preservesSuperviewLayoutMargins = NO;
+    self.hStack.preservesSuperviewLayoutMargins = NO;
+    self.preservesSuperviewLayoutMargins = NO;
+
+    [self ensureShouldShowVoiceMemoButtonAnimated:NO doLayout:NO];
 }
 
 - (void)updateFontSizes
@@ -193,8 +260,9 @@ const CGFloat kMaxTextViewHeight = 98;
 
     self.inputTextView.text = value;
 
-    [self ensureShouldShowVoiceMemoButtonAnimated:isAnimated];
+    [self ensureShouldShowVoiceMemoButtonAnimated:isAnimated doLayout:YES];
     [self ensureTextViewHeight];
+    [self updateInputLinkPreview];
 }
 
 - (void)ensureTextViewHeight
@@ -206,6 +274,7 @@ const CGFloat kMaxTextViewHeight = 98;
 {
     [self setMessageText:nil animated:isAnimated];
     [self.inputTextView.undoManager removeAllActions];
+    self.wasLinkPreviewCancelled = NO;
 }
 
 - (void)toggleDefaultKeyboard
@@ -234,30 +303,26 @@ const CGFloat kMaxTextViewHeight = 98;
         return;
     }
 
-    if (self.quotedMessagePreview) {
-        [self clearQuotedMessagePreview];
-    }
-    OWSAssertDebug(self.quotedMessagePreview == nil);
+    [self clearQuotedMessagePreview];
 
     _quotedReply = quotedReply;
 
     if (!quotedReply) {
-        [self clearQuotedMessagePreview];
         return;
     }
 
     QuotedReplyPreview *quotedMessagePreview =
         [[QuotedReplyPreview alloc] initWithQuotedReply:quotedReply conversationStyle:self.conversationStyle];
     quotedMessagePreview.delegate = self;
+    [quotedMessagePreview setContentHuggingHorizontalLow];
+    [quotedMessagePreview setCompressionResistanceHorizontalLow];
 
-    UIView *wrapper = [UIView containerView];
-    wrapper.layoutMargins = UIEdgeInsetsMake(self.quotedMessageTopMargin, 0, 0, 0);
-    [wrapper addSubview:quotedMessagePreview];
+    self.quotedReplyWrapper.hidden = NO;
+    self.quotedReplyWrapper.layoutMargins = UIEdgeInsetsZero;
+    [self.quotedReplyWrapper addSubview:quotedMessagePreview];
     [quotedMessagePreview ows_autoPinToSuperviewMargins];
 
-    [self.contentRows insertArrangedSubview:wrapper atIndex:0];
-
-    self.quotedMessagePreview = wrapper;
+    self.linkPreviewView.hasAsymmetricalRounding = !self.quotedReply;
 }
 
 - (CGFloat)quotedMessageTopMargin
@@ -267,10 +332,9 @@ const CGFloat kMaxTextViewHeight = 98;
 
 - (void)clearQuotedMessagePreview
 {
-    if (self.quotedMessagePreview) {
-        [self.contentRows removeArrangedSubview:self.quotedMessagePreview];
-        [self.quotedMessagePreview removeFromSuperview];
-        self.quotedMessagePreview = nil;
+    self.quotedReplyWrapper.hidden = YES;
+    for (UIView *subview in self.quotedReplyWrapper.subviews) {
+        [subview removeFromSuperview];
     }
 }
 
@@ -289,7 +353,7 @@ const CGFloat kMaxTextViewHeight = 98;
     return self.inputTextView.isFirstResponder;
 }
 
-- (void)ensureShouldShowVoiceMemoButtonAnimated:(BOOL)isAnimated
+- (void)ensureShouldShowVoiceMemoButtonAnimated:(BOOL)isAnimated doLayout:(BOOL)doLayout
 {
     void (^updateBlock)(void) = ^{
         if (self.inputTextView.trimmedText.length > 0) {
@@ -309,13 +373,44 @@ const CGFloat kMaxTextViewHeight = 98;
                 self.sendButton.hidden = YES;
             }
         }
-        [self layoutIfNeeded];
+        if (doLayout) {
+            [self layoutIfNeeded];
+        }
     };
 
     if (isAnimated) {
         [UIView animateWithDuration:0.1 animations:updateBlock];
     } else {
         updateBlock();
+    }
+}
+
+// iOS doesn't always update the safeAreaInsets correctly & in a timely
+// way for the inputAccessoryView after a orientation change.  The best
+// workaround appears to be to use the safeAreaInsets from
+// ConversationViewController's view.  ConversationViewController updates
+// this input toolbar using updateLayoutWithIsLandscape:.
+- (void)updateContentLayout
+{
+    if (self.layoutContraints) {
+        [NSLayoutConstraint deactivateConstraints:self.layoutContraints];
+    }
+
+    self.layoutContraints = @[
+        [self.hStack autoPinEdgeToSuperviewEdge:ALEdgeLeft withInset:self.receivedSafeAreaInsets.left],
+        [self.hStack autoPinEdgeToSuperviewEdge:ALEdgeRight withInset:self.receivedSafeAreaInsets.right],
+    ];
+}
+
+- (void)updateLayoutWithSafeAreaInsets:(UIEdgeInsets)safeAreaInsets
+{
+    BOOL didChange = !UIEdgeInsetsEqualToEdgeInsets(self.receivedSafeAreaInsets, safeAreaInsets);
+    BOOL hasLayout = self.layoutContraints != nil;
+
+    self.receivedSafeAreaInsets = safeAreaInsets;
+
+    if (didChange || !hasLayout) {
+        [self updateContentLayout];
     }
 }
 
@@ -598,8 +693,9 @@ const CGFloat kMaxTextViewHeight = 98;
 - (void)textViewDidChange:(UITextView *)textView
 {
     OWSAssertDebug(self.inputToolbarDelegate);
-    [self ensureShouldShowVoiceMemoButtonAnimated:YES];
+    [self ensureShouldShowVoiceMemoButtonAnimated:YES doLayout:YES];
     [self updateHeightWithTextView:textView];
+    [self updateInputLinkPreview];
 }
 
 - (void)updateHeightWithTextView:(UITextView *)textView
@@ -628,6 +724,138 @@ const CGFloat kMaxTextViewHeight = 98;
 - (void)quotedReplyPreviewDidPressCancel:(QuotedReplyPreview *)preview
 {
     self.quotedReply = nil;
+}
+
+#pragma mark - Link Preview
+
+- (void)updateInputLinkPreview
+{
+    OWSAssertIsOnMainThread();
+
+    NSString *body =
+        [[self messageText] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (body.length < 1) {
+        [self clearLinkPreviewStateAndView];
+        self.wasLinkPreviewCancelled = NO;
+        return;
+    }
+
+    if (self.wasLinkPreviewCancelled) {
+        [self clearLinkPreviewStateAndView];
+        return;
+    }
+
+    // Don't include link previews for oversize text messages.
+    if ([body lengthOfBytesUsingEncoding:NSUTF8StringEncoding] >= kOversizeTextMessageSizeThreshold) {
+        [self clearLinkPreviewStateAndView];
+        return;
+    }
+
+    NSString *_Nullable previewUrl = [OWSLinkPreview previewUrlForMessageBodyText:body];
+    if (previewUrl.length < 1) {
+        [self clearLinkPreviewStateAndView];
+        return;
+    }
+
+    if (self.inputLinkPreview && [self.inputLinkPreview.previewUrl isEqualToString:previewUrl]) {
+        // No need to update.
+        return;
+    }
+
+    InputLinkPreview *inputLinkPreview = [InputLinkPreview new];
+    self.inputLinkPreview = inputLinkPreview;
+    self.inputLinkPreview.previewUrl = previewUrl;
+
+    [self ensureLinkPreviewViewWithState:[LinkPreviewLoading new]];
+
+    __weak ConversationInputToolbar *weakSelf = self;
+    [[OWSLinkPreview tryToBuildPreviewInfoObjcWithPreviewUrl:previewUrl]
+            .then(^(OWSLinkPreviewDraft *linkPreviewDraft) {
+                ConversationInputToolbar *_Nullable strongSelf = weakSelf;
+                if (!strongSelf) {
+                    return;
+                }
+                if (strongSelf.inputLinkPreview != inputLinkPreview) {
+                    // Obsolete callback.
+                    return;
+                }
+                inputLinkPreview.linkPreviewDraft = linkPreviewDraft;
+                LinkPreviewDraft *viewState = [[LinkPreviewDraft alloc] initWithLinkPreviewDraft:linkPreviewDraft];
+                [strongSelf ensureLinkPreviewViewWithState:viewState];
+            })
+            .catch(^(id error) {
+                // The link preview could not be loaded.
+                [weakSelf clearLinkPreviewView];
+            }) retainUntilComplete];
+}
+
+- (void)ensureLinkPreviewViewWithState:(id<LinkPreviewState>)state
+{
+    OWSAssertIsOnMainThread();
+
+    [self clearLinkPreviewView];
+
+    LinkPreviewView *linkPreviewView = [[LinkPreviewView alloc] initWithDraftDelegate:self];
+    linkPreviewView.state = state;
+    linkPreviewView.hasAsymmetricalRounding = !self.quotedReply;
+    self.linkPreviewView = linkPreviewView;
+
+    self.linkPreviewWrapper.hidden = NO;
+    [self.linkPreviewWrapper addSubview:linkPreviewView];
+    [linkPreviewView ows_autoPinToSuperviewMargins];
+}
+
+- (void)clearLinkPreviewStateAndView
+{
+    OWSAssertIsOnMainThread();
+
+    self.inputLinkPreview = nil;
+    self.linkPreviewView = nil;
+
+    [self clearLinkPreviewView];
+}
+
+- (void)clearLinkPreviewView
+{
+    OWSAssertIsOnMainThread();
+
+    // Clear old link preview state.
+    for (UIView *subview in self.linkPreviewWrapper.subviews) {
+        [subview removeFromSuperview];
+    }
+    self.linkPreviewWrapper.hidden = YES;
+}
+
+- (nullable OWSLinkPreviewDraft *)linkPreviewDraft
+{
+    OWSAssertIsOnMainThread();
+
+    if (!self.inputLinkPreview) {
+        return nil;
+    }
+    if (self.wasLinkPreviewCancelled) {
+        return nil;
+    }
+    return self.inputLinkPreview.linkPreviewDraft;
+}
+
+#pragma mark - LinkPreviewViewDraftDelegate
+
+- (BOOL)linkPreviewCanCancel
+{
+    OWSAssertIsOnMainThread();
+
+    return YES;
+}
+
+- (void)linkPreviewDidCancel
+{
+    OWSAssertIsOnMainThread();
+
+    self.wasLinkPreviewCancelled = YES;
+
+    self.inputLinkPreview = nil;
+    [self clearLinkPreviewStateAndView];
 }
 
 @end

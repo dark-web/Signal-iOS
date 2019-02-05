@@ -1,11 +1,14 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "TSThread.h"
+#import "NSString+SSK.h"
 #import "OWSDisappearingMessagesConfiguration.h"
 #import "OWSPrimaryStorage.h"
 #import "OWSReadTracking.h"
+#import "SSKEnvironment.h"
+#import "TSAccountManager.h"
 #import "TSDatabaseView.h"
 #import "TSIncomingMessage.h"
 #import "TSInfoMessage.h"
@@ -14,10 +17,15 @@
 #import "TSOutgoingMessage.h"
 #import <SignalCoreKit/Cryptography.h>
 #import <SignalCoreKit/NSDate+OWS.h>
-#import <SignalCoreKit/NSString+SSK.h>
+#import <SignalServiceKit/SignalServiceKit-Swift.h>
 #import <YapDatabase/YapDatabase.h>
 
 NS_ASSUME_NONNULL_BEGIN
+
+BOOL IsNoteToSelfEnabled(void)
+{
+    return NO;
+}
 
 ConversationColorName const ConversationColorNameCrimson = @"red";
 ConversationColorName const ConversationColorNameVermilion = @"orange";
@@ -37,18 +45,33 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
 @interface TSThread ()
 
 @property (nonatomic) NSDate *creationDate;
-@property (nonatomic, copy, nullable) NSDate *archivalDate;
 @property (nonatomic) NSString *conversationColorName;
-@property (nonatomic, nullable) NSDate *lastMessageDate;
-
+@property (nonatomic, nullable) NSNumber *archivedAsOfMessageSortId;
 @property (nonatomic, copy, nullable) NSString *messageDraft;
 @property (atomic, nullable) NSDate *mutedUntilDate;
+
+// DEPRECATED - not used since migrating to sortId
+// but keeping these properties around to ease any pain in the back-forth
+// migration while testing. Eventually we can safely delete these as they aren't used anywhere.
+@property (nonatomic, nullable) NSDate *lastMessageDate DEPRECATED_ATTRIBUTE;
+@property (nonatomic, nullable) NSDate *archivalDate DEPRECATED_ATTRIBUTE;
 
 @end
 
 #pragma mark -
 
 @implementation TSThread
+
+#pragma mark - Dependencies
+
+- (TSAccountManager *)tsAccountManager
+{
+    OWSAssertDebug(SSKEnvironment.shared.tsAccountManager);
+
+    return SSKEnvironment.shared.tsAccountManager;
+}
+
+#pragma mark -
 
 + (NSString *)collection {
     return @"TSThread";
@@ -59,8 +82,6 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
     self = [super initWithUniqueId:uniqueId];
 
     if (self) {
-        _archivalDate    = nil;
-        _lastMessageDate = nil;
         _creationDate    = [NSDate date];
         _messageDraft    = nil;
 
@@ -122,6 +143,11 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
         _conversationColorName = mappedColorName;
     }
 
+    NSDate *_Nullable lastMessageDate = [coder decodeObjectOfClass:NSDate.class forKey:@"lastMessageDate"];
+    NSDate *_Nullable archivalDate = [coder decodeObjectOfClass:NSDate.class forKey:@"archivalDate"];
+    _isArchivedByLegacyTimestampForSorting =
+        [self.class legacyIsArchivedWithLastMessageDate:lastMessageDate archivalDate:archivalDate];
+
     return self;
 }
 
@@ -171,7 +197,16 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
     }
 }
 
-#pragma mark To be subclassed.
+- (BOOL)isNoteToSelf
+{
+    if (!IsNoteToSelfEnabled()) {
+        return NO;
+    }
+    return (!self.isGroupThread && self.contactIdentifier != nil &&
+        [self.contactIdentifier isEqualToString:self.tsAccountManager.localNumber]);
+}
+
+#pragma mark - To be subclassed.
 
 - (BOOL)isGroupThread {
     OWSAbstractMethod();
@@ -203,7 +238,7 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
     return NO;
 }
 
-#pragma mark Interactions
+#pragma mark - Interactions
 
 /**
  * Iterate over this thread's interactions
@@ -212,14 +247,13 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
                                   usingBlock:(void (^)(TSInteraction *interaction,
                                                  YapDatabaseReadTransaction *transaction))block
 {
-    void (^interactionBlock)(NSString *, NSString *, id, id, NSUInteger, BOOL *) = ^void(
-        NSString *collection, NSString *key, id _Nonnull object, id _Nonnull metadata, NSUInteger index, BOOL *stop) {
-        TSInteraction *interaction = object;
-        block(interaction, transaction);
-    };
-
     YapDatabaseViewTransaction *interactionsByThread = [transaction ext:TSMessageDatabaseViewExtensionName];
-    [interactionsByThread enumerateRowsInGroup:self.uniqueId usingBlock:interactionBlock];
+    [interactionsByThread
+        enumerateKeysAndObjectsInGroup:self.uniqueId
+                            usingBlock:^(NSString *collection, NSString *key, id object, NSUInteger index, BOOL *stop) {
+                                TSInteraction *interaction = object;
+                                block(interaction, transaction);
+                            }];
 }
 
 /**
@@ -251,6 +285,8 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
     return [interactions copy];
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 - (NSArray<TSInvalidIdentityKeyReceivingErrorMessage *> *)receivedMessagesForInvalidKey:(NSData *)key
 {
     NSMutableArray *errorMessages = [NSMutableArray new];
@@ -269,6 +305,7 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
 
     return [errorMessages copy];
 }
+#pragma clang diagnostic pop
 
 - (NSUInteger)numberOfInteractions
 {
@@ -284,16 +321,14 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
 {
     NSMutableArray<id<OWSReadTracking>> *messages = [NSMutableArray new];
     [[TSDatabaseView unseenDatabaseViewExtension:transaction]
-        enumerateRowsInGroup:self.uniqueId
-                  usingBlock:^(
-                      NSString *collection, NSString *key, id object, id metadata, NSUInteger index, BOOL *stop) {
-
-                      if (![object conformsToProtocol:@protocol(OWSReadTracking)]) {
-                          OWSFailDebug(@"Unexpected object in unseen messages: %@", [object class]);
-                          return;
-                      }
-                      [messages addObject:(id<OWSReadTracking>)object];
-                  }];
+        enumerateKeysAndObjectsInGroup:self.uniqueId
+                            usingBlock:^(NSString *collection, NSString *key, id object, NSUInteger index, BOOL *stop) {
+                                if (![object conformsToProtocol:@protocol(OWSReadTracking)]) {
+                                    OWSFailDebug(@"Unexpected object in unseen messages: %@", [object class]);
+                                    return;
+                                }
+                                [messages addObject:(id<OWSReadTracking>)object];
+                            }];
 
     return [messages copy];
 }
@@ -320,38 +355,30 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
     __block NSUInteger missedCount = 0;
     __block TSInteraction *last = nil;
     [[transaction ext:TSMessageDatabaseViewExtensionName]
-     enumerateRowsInGroup:self.uniqueId
-     withOptions:NSEnumerationReverse
-     usingBlock:^(
-                  NSString *collection, NSString *key, id object, id metadata, NSUInteger index, BOOL *stop) {
-         
-         OWSAssertDebug([object isKindOfClass:[TSInteraction class]]);
+        enumerateKeysAndObjectsInGroup:self.uniqueId
+                           withOptions:NSEnumerationReverse
+                            usingBlock:^(NSString *collection, NSString *key, id object, NSUInteger index, BOOL *stop) {
+                                OWSAssertDebug([object isKindOfClass:[TSInteraction class]]);
 
-         missedCount++;
-         TSInteraction *interaction = (TSInteraction *)object;
-         
-         if ([TSThread shouldInteractionAppearInInbox:interaction]) {
-             last = interaction;
+                                missedCount++;
+                                TSInteraction *interaction = (TSInteraction *)object;
 
-             // For long ignored threads, with lots of SN changes this can get really slow.
-             // I see this in development because I have a lot of long forgotten threads with members
-             // who's test devices are constantly reinstalled. We could add a purpose-built DB view,
-             // but I think in the real world this is rare to be a hotspot.
-             if (missedCount > 50) {
-                 OWSLogWarn(@"found last interaction for inbox after skipping %lu items", (unsigned long)missedCount);
-             }
-             *stop = YES;
-         }
-     }];
+                                if ([TSThread shouldInteractionAppearInInbox:interaction]) {
+                                    last = interaction;
+
+                                    // For long ignored threads, with lots of SN changes this can get really slow.
+                                    // I see this in development because I have a lot of long forgotten threads with
+                                    // members who's test devices are constantly reinstalled. We could add a
+                                    // purpose-built DB view, but I think in the real world this is rare to be a
+                                    // hotspot.
+                                    if (missedCount > 50) {
+                                        OWSLogWarn(@"found last interaction for inbox after skipping %lu items",
+                                            (unsigned long)missedCount);
+                                    }
+                                    *stop = YES;
+                                }
+                            }];
     return last;
-}
-
-- (NSDate *)lastMessageDate {
-    if (_lastMessageDate) {
-        return _lastMessageDate;
-    } else {
-        return _creationDate;
-    }
 }
 
 - (NSString *)lastMessageTextWithTransaction:(YapDatabaseReadTransaction *)transaction
@@ -399,17 +426,13 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
         return;
     }
 
-    self.shouldThreadBeVisible = YES;
-
-    NSDate *lastMessageDate = [lastMessage dateForSorting];
-    if (!_lastMessageDate || [lastMessageDate timeIntervalSinceDate:self.lastMessageDate] > 0) {
-        _lastMessageDate = lastMessageDate;
-
+    if (!self.shouldThreadBeVisible) {
+        self.shouldThreadBeVisible = YES;
         [self saveWithTransaction:transaction];
     }
 }
 
-#pragma mark Disappearing Messages
+#pragma mark - Disappearing Messages
 
 - (OWSDisappearingMessagesConfiguration *)disappearingMessagesConfigurationWithTransaction:
     (YapDatabaseReadTransaction *)transaction
@@ -429,30 +452,54 @@ ConversationColorName const kConversationColorName_Default = ConversationColorNa
     }
 }
 
-#pragma mark Archival
+#pragma mark - Archival
 
-- (nullable NSDate *)archivalDate
+- (BOOL)isArchivedWithTransaction:(YapDatabaseReadTransaction *)transaction;
 {
-    return _archivalDate;
+    if (!self.archivedAsOfMessageSortId) {
+        return NO;
+    }
+
+    TSInteraction *_Nullable latestInteraction = [self lastInteractionForInboxWithTransaction:transaction];
+    uint64_t latestSortIdForInbox = latestInteraction ? latestInteraction.sortId : 0;
+    return self.archivedAsOfMessageSortId.unsignedLongLongValue >= latestSortIdForInbox;
 }
 
-- (void)archiveThreadWithTransaction:(YapDatabaseReadWriteTransaction *)transaction {
-    [self archiveThreadWithTransaction:transaction referenceDate:[NSDate date]];
++ (BOOL)legacyIsArchivedWithLastMessageDate:(nullable NSDate *)lastMessageDate
+                               archivalDate:(nullable NSDate *)archivalDate
+{
+    if (!archivalDate) {
+        return NO;
+    }
+
+    if (!lastMessageDate) {
+        return YES;
+    }
+
+    return [archivalDate compare:lastMessageDate] != NSOrderedAscending;
 }
 
-- (void)archiveThreadWithTransaction:(YapDatabaseReadWriteTransaction *)transaction referenceDate:(NSDate *)date {
+- (void)archiveThreadWithTransaction:(YapDatabaseReadWriteTransaction *)transaction
+{
+    [self applyChangeToSelfAndLatestCopy:transaction
+                             changeBlock:^(TSThread *thread) {
+                                 uint64_t latestId = [SSKIncrementingIdFinder previousIdWithKey:TSInteraction.collection
+                                                                                    transaction:transaction];
+                                 thread.archivedAsOfMessageSortId = @(latestId);
+                             }];
+
     [self markAllAsReadWithTransaction:transaction];
-    _archivalDate = date;
-
-    [self saveWithTransaction:transaction];
 }
 
-- (void)unarchiveThreadWithTransaction:(YapDatabaseReadWriteTransaction *)transaction {
-    _archivalDate = nil;
-    [self saveWithTransaction:transaction];
+- (void)unarchiveThreadWithTransaction:(YapDatabaseReadWriteTransaction *)transaction
+{
+    [self applyChangeToSelfAndLatestCopy:transaction
+                             changeBlock:^(TSThread *thread) {
+                                 thread.archivedAsOfMessageSortId = nil;
+                             }];
 }
 
-#pragma mark Drafts
+#pragma mark - Drafts
 
 - (NSString *)currentDraftWithTransaction:(YapDatabaseReadTransaction *)transaction {
     TSThread *thread = [TSThread fetchObjectWithUniqueID:self.uniqueId transaction:transaction];

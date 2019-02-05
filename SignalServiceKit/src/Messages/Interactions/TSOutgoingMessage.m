@@ -1,8 +1,9 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "TSOutgoingMessage.h"
+#import "NSString+SSK.h"
 #import "OWSContact.h"
 #import "OWSMessageSender.h"
 #import "OWSOutgoingSyncMessage.h"
@@ -16,7 +17,6 @@
 #import "TSGroupThread.h"
 #import "TSQuotedMessage.h"
 #import <SignalCoreKit/NSDate+OWS.h>
-#import <SignalCoreKit/NSString+SSK.h>
 #import <SignalServiceKit/SignalServiceKit-Swift.h>
 #import <YapDatabase/YapDatabase.h>
 #import <YapDatabase/YapDatabaseTransaction.h>
@@ -231,7 +231,8 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
                              messageBody:body
                             attachmentId:attachmentId
                         expiresInSeconds:0
-                           quotedMessage:nil];
+                           quotedMessage:nil
+                             linkPreview:nil];
 }
 
 + (instancetype)outgoingMessageInThread:(nullable TSThread *)thread
@@ -243,7 +244,8 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
                              messageBody:body
                             attachmentId:attachmentId
                         expiresInSeconds:expiresInSeconds
-                           quotedMessage:nil];
+                           quotedMessage:nil
+                             linkPreview:nil];
 }
 
 + (instancetype)outgoingMessageInThread:(nullable TSThread *)thread
@@ -251,12 +253,14 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
                            attachmentId:(nullable NSString *)attachmentId
                        expiresInSeconds:(uint32_t)expiresInSeconds
                           quotedMessage:(nullable TSQuotedMessage *)quotedMessage
+                            linkPreview:(nullable OWSLinkPreview *)linkPreview
 {
     NSMutableArray<NSString *> *attachmentIds = [NSMutableArray new];
     if (attachmentId) {
         [attachmentIds addObject:attachmentId];
     }
 
+    // MJK TODO remove SenderTimestamp?
     return [[TSOutgoingMessage alloc] initOutgoingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                               inThread:thread
                                                            messageBody:body
@@ -266,13 +270,15 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
                                                         isVoiceMessage:NO
                                                       groupMetaMessage:TSGroupMetaMessageUnspecified
                                                          quotedMessage:quotedMessage
-                                                          contactShare:nil];
+                                                          contactShare:nil
+                                                           linkPreview:linkPreview];
 }
 
 + (instancetype)outgoingMessageInThread:(nullable TSThread *)thread
                        groupMetaMessage:(TSGroupMetaMessage)groupMetaMessage
                        expiresInSeconds:(uint32_t)expiresInSeconds;
 {
+    // MJK TODO remove SenderTimestamp?
     return [[TSOutgoingMessage alloc] initOutgoingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                               inThread:thread
                                                            messageBody:nil
@@ -282,7 +288,8 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
                                                         isVoiceMessage:NO
                                                       groupMetaMessage:groupMetaMessage
                                                          quotedMessage:nil
-                                                          contactShare:nil];
+                                                          contactShare:nil
+                                                           linkPreview:nil];
 }
 
 - (instancetype)initOutgoingMessageWithTimestamp:(uint64_t)timestamp
@@ -295,6 +302,7 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
                                 groupMetaMessage:(TSGroupMetaMessage)groupMetaMessage
                                    quotedMessage:(nullable TSQuotedMessage *)quotedMessage
                                     contactShare:(nullable OWSContact *)contactShare
+                                     linkPreview:(nullable OWSLinkPreview *)linkPreview
 {
     self = [super initMessageWithTimestamp:timestamp
                                   inThread:thread
@@ -303,7 +311,8 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
                           expiresInSeconds:expiresInSeconds
                            expireStartedAt:expireStartedAt
                              quotedMessage:quotedMessage
-                              contactShare:contactShare];
+                              contactShare:contactShare
+                               linkPreview:linkPreview];
     if (!self) {
         return self;
     }
@@ -955,6 +964,32 @@ NSString *NSStringForOutgoingMessageRecipientState(OWSOutgoingMessageRecipientSt
             [builder addContact:contactProto];
         } else {
             OWSFailDebug(@"contactProto was unexpectedly nil");
+        }
+    }
+
+    // Link Preview
+    if (self.linkPreview) {
+        SSKProtoDataMessagePreviewBuilder *previewBuilder =
+            [SSKProtoDataMessagePreview builderWithUrl:self.linkPreview.urlString];
+        if (self.linkPreview.title.length > 0) {
+            [previewBuilder setTitle:self.linkPreview.title];
+        }
+        if (self.linkPreview.imageAttachmentId) {
+            SSKProtoAttachmentPointer *_Nullable attachmentProto =
+                [TSAttachmentStream buildProtoForAttachmentId:self.linkPreview.imageAttachmentId];
+            if (!attachmentProto) {
+                OWSFailDebug(@"Could not build link preview image protobuf.");
+            } else {
+                [previewBuilder setImage:attachmentProto];
+            }
+        }
+
+        NSError *error;
+        SSKProtoDataMessagePreview *_Nullable previewProto = [previewBuilder buildAndReturnError:&error];
+        if (error || !previewProto) {
+            OWSFailDebug(@"Could not build link preview protobuf: %@.", error);
+        } else {
+            [builder addPreview:previewProto];
         }
     }
 

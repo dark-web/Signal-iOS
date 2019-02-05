@@ -1,8 +1,9 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "DebugUIMisc.h"
+#import "DebugUIMessagesAssetLoader.h"
 #import "OWSBackup.h"
 #import "OWSCountryMetadata.h"
 #import "OWSTableViewController.h"
@@ -20,7 +21,6 @@
 #import <SignalServiceKit/TSInvalidIdentityKeyReceivingErrorMessage.h>
 #import <SignalServiceKit/TSThread.h>
 #import <SignalServiceKit/UIImage+OWS.h>
-#import "DebugUIMessagesAssetLoader.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

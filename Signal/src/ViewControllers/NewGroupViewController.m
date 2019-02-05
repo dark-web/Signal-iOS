@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "NewGroupViewController.h"
@@ -14,13 +14,13 @@
 #import <SignalMessaging/ContactTableViewCell.h>
 #import <SignalMessaging/ContactsViewHelper.h>
 #import <SignalMessaging/Environment.h>
-#import <SignalMessaging/NSString+OWS.h>
 #import <SignalMessaging/OWSContactsManager.h>
 #import <SignalMessaging/OWSTableViewController.h>
 #import <SignalMessaging/SignalKeyingStorage.h>
 #import <SignalMessaging/UIUtil.h>
 #import <SignalMessaging/UIView+OWS.h>
 #import <SignalMessaging/UIViewController+OWS.h>
+#import <SignalServiceKit/NSString+SSK.h>
 #import <SignalServiceKit/OWSMessageSender.h>
 #import <SignalServiceKit/SignalAccount.h>
 #import <SignalServiceKit/TSGroupModel.h>
@@ -126,7 +126,8 @@ NS_ASSUME_NONNULL_BEGIN
     _tableViewController = [OWSTableViewController new];
     _tableViewController.delegate = self;
     [self.view addSubview:self.tableViewController.view];
-    [_tableViewController.view autoPinWidthToSuperview];
+    [self.tableViewController.view autoPinEdgeToSuperviewSafeArea:ALEdgeLeading];
+    [self.tableViewController.view autoPinEdgeToSuperviewSafeArea:ALEdgeTrailing];
     [_tableViewController.view autoPinEdge:ALEdgeTop toEdge:ALEdgeBottom ofView:firstSection];
     [self autoPinViewToBottomOfViewControllerOrKeyboard:self.tableViewController.view avoidNotch:NO];
     self.tableViewController.tableView.rowHeight = UITableViewAutomaticDimension;
@@ -462,6 +463,7 @@ NS_ASSUME_NONNULL_BEGIN
 
         // Add an error message to the new group indicating
         // that group creation didn't succeed.
+        // MJK TODO should be safe to remove senderTimestamp and just save immediately
         TSErrorMessage *errorMessage = [[TSErrorMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                                                         inThread:thread
                                                                failedMessageType:TSErrorMessageGroupCreationFailed];

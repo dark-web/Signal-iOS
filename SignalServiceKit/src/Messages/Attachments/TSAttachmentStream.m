@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "TSAttachmentStream.h"
@@ -355,25 +355,49 @@ typedef void (^OWSLoadedThumbnailSuccess)(OWSLoadedThumbnail *loadedThumbnail);
 {
     OWSAssertDebug(self.isImage || self.isAnimated);
 
+    BOOL result;
+    BOOL didUpdateCache = NO;
     @synchronized(self) {
         if (!self.isValidImageCached) {
-            self.isValidImageCached =
-                @([NSData ows_isValidImageAtPath:self.originalFilePath mimeType:self.contentType]);
+            OWSLogVerbose(@"Updating isValidImageCached.");
+            self.isValidImageCached = @([NSData ows_isValidImageAtPath:self.originalFilePath
+                                                              mimeType:self.contentType]);
+            didUpdateCache = YES;
         }
-        return self.isValidImageCached.boolValue;
+        result = self.isValidImageCached.boolValue;
     }
+
+    if (didUpdateCache) {
+        [self applyChangeAsyncToLatestCopyWithChangeBlock:^(TSAttachmentStream *latestInstance) {
+            latestInstance.isValidImageCached = @(result);
+        }];
+    }
+
+    return result;
 }
 
 - (BOOL)isValidVideo
 {
     OWSAssertDebug(self.isVideo);
 
+    BOOL result;
+    BOOL didUpdateCache = NO;
     @synchronized(self) {
         if (!self.isValidVideoCached) {
+            OWSLogVerbose(@"Updating isValidVideoCached.");
             self.isValidVideoCached = @([OWSMediaUtils isValidVideoWithPath:self.originalFilePath]);
+            didUpdateCache = YES;
         }
-        return self.isValidVideoCached.boolValue;
+        result = self.isValidVideoCached.boolValue;
     }
+
+    if (didUpdateCache) {
+        [self applyChangeAsyncToLatestCopyWithChangeBlock:^(TSAttachmentStream *latestInstance) {
+            latestInstance.isValidVideoCached = @(result);
+        }];
+    }
+
+    return result;
 }
 
 #pragma mark -
@@ -464,65 +488,10 @@ typedef void (^OWSLoadedThumbnailSuccess)(OWSLoadedThumbnail *loadedThumbnail);
         }
         return [self videoStillImage].size;
     } else if ([self isImage] || [self isAnimated]) {
-        NSURL *_Nullable mediaUrl = self.originalMediaURL;
-        if (!mediaUrl) {
-            return CGSizeZero;
-        }
-        if (![self isValidImage]) {
-            return CGSizeZero;
-        }
-
-        // With CGImageSource we avoid loading the whole image into memory.
-        CGImageSourceRef source = CGImageSourceCreateWithURL((CFURLRef)mediaUrl, NULL);
-        if (!source) {
-            OWSFailDebug(@"Could not load image: %@", mediaUrl);
-            return CGSizeZero;
-        }
-
-        NSDictionary *options = @{
-            (NSString *)kCGImageSourceShouldCache : @(NO),
-        };
-        NSDictionary *properties
-            = (__bridge_transfer NSDictionary *)CGImageSourceCopyPropertiesAtIndex(source, 0, (CFDictionaryRef)options);
-        CGSize imageSize = CGSizeZero;
-        if (properties) {
-            NSNumber *orientation = properties[(NSString *)kCGImagePropertyOrientation];
-            NSNumber *width = properties[(NSString *)kCGImagePropertyPixelWidth];
-            NSNumber *height = properties[(NSString *)kCGImagePropertyPixelHeight];
-
-            if (width && height) {
-                imageSize = CGSizeMake(width.floatValue, height.floatValue);
-
-                if (orientation) {
-                    imageSize =
-                        [self applyImageOrientation:(UIImageOrientation)orientation.intValue toImageSize:imageSize];
-                }
-            } else {
-                OWSFailDebug(@"Could not determine size of image: %@", mediaUrl);
-            }
-        }
-        CFRelease(source);
-        return imageSize;
+        // imageSizeForFilePath checks validity.
+        return [NSData imageSizeForFilePath:self.originalFilePath mimeType:self.contentType];
     } else {
         return CGSizeZero;
-    }
-}
-
-- (CGSize)applyImageOrientation:(UIImageOrientation)orientation toImageSize:(CGSize)imageSize
-{
-    switch (orientation) {
-        case UIImageOrientationUp: // EXIF = 1
-        case UIImageOrientationUpMirrored: // EXIF = 2
-        case UIImageOrientationDown: // EXIF = 3
-        case UIImageOrientationDownMirrored: // EXIF = 4
-            return imageSize;
-        case UIImageOrientationLeftMirrored: // EXIF = 5
-        case UIImageOrientationLeft: // EXIF = 6
-        case UIImageOrientationRightMirrored: // EXIF = 7
-        case UIImageOrientationRight: // EXIF = 8
-            return CGSizeMake(imageSize.height, imageSize.width);
-        default:
-            return imageSize;
     }
 }
 
@@ -548,27 +517,42 @@ typedef void (^OWSLoadedThumbnailSuccess)(OWSLoadedThumbnail *loadedThumbnail);
         self.cachedImageWidth = @(imageSize.width);
         self.cachedImageHeight = @(imageSize.height);
 
-        [self.dbReadWriteConnection asyncReadWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-
-            NSString *collection = [[self class] collection];
-            TSAttachmentStream *latestInstance = [transaction objectForKey:self.uniqueId inCollection:collection];
-            if (latestInstance) {
-                latestInstance.cachedImageWidth = @(imageSize.width);
-                latestInstance.cachedImageHeight = @(imageSize.height);
-                [latestInstance saveWithTransaction:transaction];
-            } else {
-                // This message has not yet been saved or has been deleted; do nothing.
-                // This isn't an error per se, but these race conditions should be
-                // _very_ rare.
-                //
-                // An exception is incoming group avatar updates which we don't ever save.
-                OWSLogWarn(@"Attachment not yet saved.");
-            }
+        [self applyChangeAsyncToLatestCopyWithChangeBlock:^(TSAttachmentStream *latestInstance) {
+            latestInstance.cachedImageWidth = @(imageSize.width);
+            latestInstance.cachedImageHeight = @(imageSize.height);
         }];
 
         return imageSize;
     }
 }
+
+#pragma mark - Update With...
+
+- (void)applyChangeAsyncToLatestCopyWithChangeBlock:(void (^)(TSAttachmentStream *))changeBlock
+{
+    OWSAssertDebug(changeBlock);
+
+    [self.dbReadWriteConnection asyncReadWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
+        NSString *collection = [TSAttachmentStream collection];
+        TSAttachmentStream *latestInstance = [transaction objectForKey:self.uniqueId inCollection:collection];
+        if (!latestInstance) {
+            // This attachment has either not yet been saved or has been deleted; do nothing.
+            // This isn't an error per se, but these race conditions should be
+            // _very_ rare.
+            //
+            // An exception is incoming group avatar updates which we don't ever save.
+            OWSLogWarn(@"Attachment not yet saved.");
+        } else if (![latestInstance isKindOfClass:[TSAttachmentStream class]]) {
+            OWSFailDebug(@"Attachment has unexpected type: %@", latestInstance.class);
+        } else {
+            changeBlock(latestInstance);
+
+            [latestInstance saveWithTransaction:transaction];
+        }
+    }];
+}
+
+#pragma mark -
 
 - (CGFloat)calculateAudioDurationSeconds
 {
@@ -601,18 +585,8 @@ typedef void (^OWSLoadedThumbnailSuccess)(OWSLoadedThumbnail *loadedThumbnail);
     CGFloat audioDurationSeconds = [self calculateAudioDurationSeconds];
     self.cachedAudioDurationSeconds = @(audioDurationSeconds);
 
-    [self.dbReadWriteConnection asyncReadWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-        NSString *collection = [[self class] collection];
-        TSAttachmentStream *latestInstance = [transaction objectForKey:self.uniqueId inCollection:collection];
-        if (latestInstance) {
-            latestInstance.cachedAudioDurationSeconds = @(audioDurationSeconds);
-            [latestInstance saveWithTransaction:transaction];
-        } else {
-            // This message has not yet been saved or has been deleted; do nothing.
-            // This isn't an error per se, but these race conditions should be
-            // _very_ rare.
-            OWSFailDebug(@"Attachment not yet saved.");
-        }
+    [self applyChangeAsyncToLatestCopyWithChangeBlock:^(TSAttachmentStream *latestInstance) {
+        latestInstance.cachedAudioDurationSeconds = @(audioDurationSeconds);
     }];
 
     return audioDurationSeconds;
@@ -802,6 +776,10 @@ typedef void (^OWSLoadedThumbnailSuccess)(OWSLoadedThumbnail *loadedThumbnail);
 
 - (nullable TSAttachmentStream *)cloneAsThumbnail
 {
+    if (!self.isValidVisualMedia) {
+        return nil;
+    }
+
     NSData *_Nullable thumbnailData = self.thumbnailDataSmallSync;
     //  Only some media types have thumbnails
     if (!thumbnailData) {

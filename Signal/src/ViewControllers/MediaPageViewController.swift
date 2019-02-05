@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import UIKit
@@ -145,7 +145,7 @@ class MediaPageViewController: UIPageViewController, UIPageViewControllerDataSou
         // e.g. when getting to media details via message details screen, there's only
         // one "Page" so the bounce doesn't make sense.
         pagerScrollView.isScrollEnabled = sliderEnabled
-        pagerScrollViewContentOffsetObservation = pagerScrollView.observe(\.contentOffset, options: [.new]) { [weak self] object, change in
+        pagerScrollViewContentOffsetObservation = pagerScrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, change in
             guard let strongSelf = self else { return }
             strongSelf.pagerScrollView(strongSelf.pagerScrollView, contentOffsetDidChange: change)
         }
@@ -331,7 +331,9 @@ class MediaPageViewController: UIPageViewController, UIPageViewControllerDataSou
             return
         }
 
-        galleryRailView.configureCellViews(itemProvider: currentItem.album, focusedItem: currentItem, cellViewDecoratorBlock: { _ in })
+        galleryRailView.configureCellViews(itemProvider: currentItem.album,
+                                           focusedItem: currentItem,
+                                           cellViewBuilder: { return GalleryRailCellView() })
     }
 
     // MARK: Actions
@@ -605,9 +607,15 @@ class MediaPageViewController: UIPageViewController, UIPageViewControllerDataSou
             return
         }
 
-        mediaGalleryDataSource.dismissMediaDetailViewController(self, animated: isAnimated) {
-            UIDevice.current.ows_setOrientation(.portrait)
-            completion?()
+        if IsLandscapeOrientationEnabled() {
+            mediaGalleryDataSource.dismissMediaDetailViewController(self,
+                                                                    animated: isAnimated,
+                                                                    completion: completion)
+        } else {
+            mediaGalleryDataSource.dismissMediaDetailViewController(self, animated: isAnimated) {
+                UIDevice.current.ows_setOrientation(.portrait)
+                completion?()
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSReceiptsForSenderMessage.h"
@@ -41,6 +41,7 @@ NS_ASSUME_NONNULL_BEGIN
              messageTimestamps:(NSArray<NSNumber *> *)messageTimestamps
                    receiptType:(SSKProtoReceiptMessageType)receiptType
 {
+    // MJK TODO - remove senderTimestamp
     self = [super initOutgoingMessageWithTimestamp:[NSDate ows_millisecondTimeStamp]
                                           inThread:thread
                                        messageBody:nil
@@ -50,7 +51,8 @@ NS_ASSUME_NONNULL_BEGIN
                                     isVoiceMessage:NO
                                   groupMetaMessage:TSGroupMetaMessageUnspecified
                                      quotedMessage:nil
-                                      contactShare:nil];
+                                      contactShare:nil
+                                       linkPreview:nil];
     if (!self) {
         return self;
     }

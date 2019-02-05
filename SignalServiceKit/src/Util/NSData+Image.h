@@ -1,6 +1,8 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
+
+NS_ASSUME_NONNULL_BEGIN
 
 @interface NSData (Image)
 
@@ -11,4 +13,13 @@
 - (BOOL)ows_isValidImage;
 - (BOOL)ows_isValidImageWithMimeType:(nullable NSString *)mimeType;
 
+// Returns the image size in pixels.
+//
+// Returns CGSizeZero on error.
++ (CGSize)imageSizeForFilePath:(NSString *)filePath mimeType:(NSString *)mimeType;
+
++ (BOOL)hasAlphaForValidImageFilePath:(NSString *)filePath;
+
 @end
+
+NS_ASSUME_NONNULL_END

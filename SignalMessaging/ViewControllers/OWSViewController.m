@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSViewController.h"
@@ -7,6 +7,17 @@
 #import <SignalMessaging/Theme.h>
 
 NS_ASSUME_NONNULL_BEGIN
+
+BOOL IsLandscapeOrientationEnabled(void)
+{
+    return YES;
+}
+
+UIInterfaceOrientationMask DefaultUIInterfaceOrientationMask(void)
+{
+    return (IsLandscapeOrientationEnabled() ? UIInterfaceOrientationMaskAllButUpsideDown
+                                            : UIInterfaceOrientationMaskPortrait);
+}
 
 @interface OWSViewController ()
 
@@ -115,35 +126,39 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)keyboardWillShow:(NSNotification *)notification
 {
-    [self handleKeyboardNotification:notification];
+    [self handleKeyboardNotificationBase:notification];
 }
 
 - (void)keyboardDidShow:(NSNotification *)notification
 {
-    [self handleKeyboardNotification:notification];
+    [self handleKeyboardNotificationBase:notification];
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification
 {
-    [self handleKeyboardNotification:notification];
+    [self handleKeyboardNotificationBase:notification];
 }
 
 - (void)keyboardDidHide:(NSNotification *)notification
 {
-    [self handleKeyboardNotification:notification];
+    [self handleKeyboardNotificationBase:notification];
 }
 
 - (void)keyboardWillChangeFrame:(NSNotification *)notification
 {
-    [self handleKeyboardNotification:notification];
+    [self handleKeyboardNotificationBase:notification];
 }
 
 - (void)keyboardDidChangeFrame:(NSNotification *)notification
 {
-    [self handleKeyboardNotification:notification];
+    [self handleKeyboardNotificationBase:notification];
 }
 
-- (void)handleKeyboardNotification:(NSNotification *)notification
+// We use the name `handleKeyboardNotificationBase` instead of
+// `handleKeyboardNotification` to avoid accidentally
+// calling similarly methods with that name in subclasses,
+// e.g. ConversationViewController.
+- (void)handleKeyboardNotificationBase:(NSNotification *)notification
 {
     OWSAssertIsOnMainThread();
 
@@ -181,7 +196,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations
 {
-    return UIInterfaceOrientationMaskPortrait;
+    return DefaultUIInterfaceOrientationMask();
 }
 
 @end

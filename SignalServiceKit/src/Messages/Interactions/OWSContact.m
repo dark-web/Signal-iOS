@@ -1,16 +1,16 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSContact.h"
 #import "Contact.h"
 #import "MimeTypeUtil.h"
+#import "NSString+SSK.h"
 #import "OWSContact+Private.h"
 #import "PhoneNumber.h"
 #import "TSAttachment.h"
 #import "TSAttachmentPointer.h"
 #import "TSAttachmentStream.h"
-#import <SignalCoreKit/NSString+SSK.h>
 #import <SignalServiceKit/SignalServiceKit-Swift.h>
 #import <YapDatabase/YapDatabaseTransaction.h>
 
@@ -509,8 +509,8 @@ NSString *NSStringForContactAddressType(OWSContactAddressType value)
 
 - (void)removeAvatarAttachmentWithTransaction:(YapDatabaseReadWriteTransaction *)transaction
 {
-    TSAttachmentStream *_Nullable attachment =
-        [TSAttachmentStream fetchObjectWithUniqueID:self.avatarAttachmentId transaction:transaction];
+    TSAttachment *_Nullable attachment =
+        [TSAttachment fetchObjectWithUniqueID:self.avatarAttachmentId transaction:transaction];
     [attachment removeWithTransaction:transaction];
 }
 

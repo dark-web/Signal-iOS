@@ -1,20 +1,25 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 NS_ASSUME_NONNULL_BEGIN
 
 @class OWSBlockingManager;
+@class OWSContact;
 @class OWSContactsManager;
+@class OWSLinkPreviewDraft;
 @class OWSMessageSender;
+@class OWSQuotedReplyModel;
 @class OWSUnreadIndicator;
 @class SignalAttachment;
 @class TSContactThread;
 @class TSGroupThread;
 @class TSInteraction;
+@class TSOutgoingMessage;
 @class TSThread;
 @class YapDatabaseConnection;
 @class YapDatabaseReadTransaction;
+@class YapDatabaseReadWriteTransaction;
 
 @interface ThreadDynamicInteractions : NSObject
 
@@ -35,11 +40,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark -
 
-@class OWSContact;
-@class OWSQuotedReplyModel;
-@class TSOutgoingMessage;
-@class YapDatabaseReadWriteTransaction;
-
 @interface ThreadUtil : NSObject
 
 #pragma mark - Durable Message Enqueue
@@ -47,7 +47,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (TSOutgoingMessage *)enqueueMessageWithText:(NSString *)text
                                      inThread:(TSThread *)thread
                              quotedReplyModel:(nullable OWSQuotedReplyModel *)quotedReplyModel
-                                  transaction:(YapDatabaseReadWriteTransaction *)transaction;
+                             linkPreviewDraft:(nullable nullable OWSLinkPreviewDraft *)linkPreviewDraft
+                                  transaction:(YapDatabaseReadTransaction *)transaction;
 
 + (TSOutgoingMessage *)enqueueMessageWithAttachment:(SignalAttachment *)attachment
                                            inThread:(TSThread *)thread

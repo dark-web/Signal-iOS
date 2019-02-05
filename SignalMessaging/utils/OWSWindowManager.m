@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSWindowManager.h"
@@ -12,6 +12,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 NSString *const OWSWindowManagerCallDidChangeNotification = @"OWSWindowManagerCallDidChangeNotification";
+
+NSString *const IsScreenBlockActiveDidChangeNotification = @"IsScreenBlockActiveDidChangeNotification";
 
 const CGFloat OWSWindowManagerCallBannerHeight(void)
 {
@@ -65,10 +67,13 @@ const UIWindowLevel UIWindowLevel_MessageActions(void)
     return CGFLOAT_MAX - 100;
 }
 
+#pragma mark -
 
 @interface MessageActionsWindow : UIWindow
 
 @end
+
+#pragma mark -
 
 @implementation MessageActionsWindow
 
@@ -82,6 +87,8 @@ const UIWindowLevel UIWindowLevel_MessageActions(void)
 }
 
 @end
+
+#pragma mark -
 
 @implementation OWSWindowRootViewController
 
@@ -99,9 +106,13 @@ const UIWindowLevel UIWindowLevel_MessageActions(void)
 
 @end
 
+#pragma mark -
+
 @interface OWSWindowRootNavigationViewController : UINavigationController
 
 @end
+
+#pragma mark -
 
 @implementation OWSWindowRootNavigationViewController : UINavigationController
 
@@ -136,8 +147,6 @@ const UIWindowLevel UIWindowLevel_MessageActions(void)
 // UIWindowLevel_Background if inactive,
 // UIWindowLevel_ScreenBlocking() if active.
 @property (nonatomic) UIWindow *screenBlockingWindow;
-
-@property (nonatomic) BOOL isScreenBlockActive;
 
 @property (nonatomic) BOOL shouldShowCallView;
 
@@ -299,6 +308,18 @@ const UIWindowLevel UIWindowLevel_MessageActions(void)
     _isScreenBlockActive = isScreenBlockActive;
 
     [self ensureWindowState];
+
+    [[NSNotificationCenter defaultCenter] postNotificationName:IsScreenBlockActiveDidChangeNotification
+                                                        object:nil
+                                                      userInfo:nil];
+}
+
+- (BOOL)isAppWindow:(UIWindow *)window
+{
+    OWSAssertDebug(window);
+
+    return (window == self.rootWindow || window == self.returnToCallWindow || window == self.callViewWindow
+        || window == self.menuActionsWindow || window == self.screenBlockingWindow);
 }
 
 #pragma mark - Message Actions
@@ -473,7 +494,7 @@ const UIWindowLevel UIWindowLevel_MessageActions(void)
         OWSLogInfo(@"showing root window.");
     }
 
-    // By calling makeKeyAndVisible we ensure the rootViewController becomes firt responder.
+    // By calling makeKeyAndVisible we ensure the rootViewController becomes first responder.
     // In the normal case, that means the SignalViewController will call `becomeFirstResponder`
     // on the vc on top of its navigation stack.
     [self.rootWindow makeKeyAndVisible];

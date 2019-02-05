@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 import Foundation
@@ -173,7 +173,8 @@ class GifPickerViewController: OWSViewController, UISearchBarDelegate, UICollect
         // Inserted below searchbar because we later occlude the collectionview
         // by inserting a masking layer between the search bar and collectionview
         self.view.insertSubview(self.collectionView, belowSubview: searchBar)
-        self.collectionView.autoPinWidthToSuperview()
+        self.collectionView.autoPinEdge(toSuperviewSafeArea: .leading)
+        self.collectionView.autoPinEdge(toSuperviewSafeArea: .trailing)
         self.collectionView.autoPinEdge(.top, to: .bottom, of: searchBar)
 
         // for iPhoneX devices, extends the black background to the bottom edge of the view.
@@ -361,12 +362,17 @@ class GifPickerViewController: OWSViewController, UISearchBarDelegate, UICollect
     }
 
     public func getFileForCell(_ cell: GifPickerCell) {
-        GiphyDownloader.sharedInstance.cancelAllRequests()
+        GiphyDownloader.giphyDownloader.cancelAllRequests()
+
         firstly {
             cell.requestRenditionForSending()
-        }.done { [weak self] (asset: GiphyAsset) in
+        }.done { [weak self] (asset: ProxiedContentAsset) in
             guard let strongSelf = self else {
                 Logger.info("ignoring send, since VC was dismissed before fetching finished.")
+                return
+            }
+            guard let rendition = asset.assetDescription as? GiphyRendition else {
+                owsFailDebug("Invalid asset description.")
                 return
             }
 
@@ -376,7 +382,7 @@ class GifPickerViewController: OWSViewController, UISearchBarDelegate, UICollect
                 owsFailDebug("couldn't load asset.")
                 return
             }
-            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: asset.rendition.utiType, imageQuality: .original)
+            let attachment = SignalAttachment.attachment(dataSource: dataSource, dataUTI: rendition.utiType, imageQuality: .original)
 
             strongSelf.dismiss(animated: true) {
                 // Delegate presents view controllers, so it's important that *this* controller be dismissed before that occurs.
@@ -516,5 +522,11 @@ class GifPickerViewController: OWSViewController, UISearchBarDelegate, UICollect
             return
         }
         tryToSearch()
+    }
+
+    public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+
+        layout.invalidateLayout()
     }
 }

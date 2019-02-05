@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2018 Open Whisper Systems. All rights reserved.
+//  Copyright (c) 2019 Open Whisper Systems. All rights reserved.
 //
 
 #import "OWSMessageSender.h"
@@ -56,6 +56,8 @@
 #import <SignalServiceKit/SignalServiceKit-Swift.h>
 
 NS_ASSUME_NONNULL_BEGIN
+
+NSString *NoSessionForTransientMessageException = @"NoSessionForTransientMessageException";
 
 const NSUInteger kOversizeTextMessageSizeThreshold = 2 * 1024;
 
@@ -353,9 +355,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     }
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-
-        __block NSArray<TSAttachmentStream *> *quotedThumbnailAttachments = @[];
-        __block TSAttachmentStream *_Nullable contactShareAvatarAttachment;
+        NSMutableArray<NSString *> *allAttachmentIds = [NSMutableArray new];
 
         // This method will use a read/write transaction. This transaction
         // will block until any open read/write transactions are complete.
@@ -370,10 +370,8 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
         // So we're using YDB behavior to ensure this invariant, which is a bit
         // unorthodox.
         [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-            [OutgoingMessagePreparer prepareMessageForSending:message
-                                   quotedThumbnailAttachments:&quotedThumbnailAttachments
-                                 contactShareAvatarAttachment:&contactShareAvatarAttachment
-                                                  transaction:transaction];
+            [allAttachmentIds
+                addObjectsFromArray:[OutgoingMessagePreparer prepareMessageForSending:message transaction:transaction]];
         }];
 
         NSOperationQueue *sendingQueue = [self sendingQueueForMessage:message];
@@ -384,39 +382,12 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
                                                      success:successHandler
                                                      failure:failureHandler];
 
-        // TODO: de-dupe attachment enqueue logic.
-        for (NSString *attachmentId in message.attachmentIds) {
+        for (NSString *attachmentId in allAttachmentIds) {
             OWSUploadOperation *uploadAttachmentOperation =
                 [[OWSUploadOperation alloc] initWithAttachmentId:attachmentId dbConnection:self.dbConnection];
+            // TODO: put attachment uploads on a (low priority) concurrent queue
             [sendMessageOperation addDependency:uploadAttachmentOperation];
             [sendingQueue addOperation:uploadAttachmentOperation];
-        }
-
-        // Though we currently only ever expect at most one thumbnail, the proto data model
-        // suggests this could change. The logic is intended to work with multiple, but
-        // if we ever actually want to send multiple, we should do more testing.
-        OWSAssertDebug(quotedThumbnailAttachments.count <= 1);
-        for (TSAttachmentStream *thumbnailAttachment in quotedThumbnailAttachments) {
-            OWSAssertDebug(message.quotedMessage);
-
-            OWSUploadOperation *uploadQuoteThumbnailOperation =
-                [[OWSUploadOperation alloc] initWithAttachmentId:thumbnailAttachment.uniqueId
-                                                    dbConnection:self.dbConnection];
-
-            // TODO put attachment uploads on a (lowly) concurrent queue
-            [sendMessageOperation addDependency:uploadQuoteThumbnailOperation];
-            [sendingQueue addOperation:uploadQuoteThumbnailOperation];
-        }
-
-        if (contactShareAvatarAttachment != nil) {
-            OWSAssertDebug(message.contactShare);
-            OWSUploadOperation *uploadAvatarOperation =
-                [[OWSUploadOperation alloc] initWithAttachmentId:contactShareAvatarAttachment.uniqueId
-                                                    dbConnection:self.dbConnection];
-
-            // TODO put attachment uploads on a (lowly) concurrent queue
-            [sendMessageOperation addDependency:uploadAvatarOperation];
-            [sendingQueue addOperation:uploadAvatarOperation];
         }
 
         [sendingQueue addOperation:sendMessageOperation];
@@ -524,7 +495,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
     NSMutableSet<NSString *> *recipientIds = [NSMutableSet new];
     if ([message isKindOfClass:[OWSOutgoingSyncMessage class]]) {
-        [recipientIds addObject:[TSAccountManager localNumber]];
+        [recipientIds addObject:self.tsAccountManager.localNumber];
     } else if (thread.isGroupThread) {
         TSGroupThread *groupThread = (TSGroupThread *)thread;
 
@@ -543,7 +514,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
         // Only send to members in the latest known group member list.
         [recipientIds intersectSet:[NSSet setWithArray:groupThread.groupModel.groupMemberIds]];
 
-        if ([recipientIds containsObject:TSAccountManager.localNumber]) {
+        if ([recipientIds containsObject:self.tsAccountManager.localNumber]) {
             OWSFailDebug(@"Message send recipients should not include self.");
         }
     } else if ([thread isKindOfClass:[TSContactThread class]]) {
@@ -565,7 +536,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
         [recipientIds addObject:recipientContactId];
 
-        if ([recipientIds containsObject:TSAccountManager.localNumber]) {
+        if ([recipientIds containsObject:self.tsAccountManager.localNumber]) {
             OWSFailDebug(@"Message send recipients should not include self.");
         }
     } else {
@@ -706,16 +677,10 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
     // In the "self-send" special case, we ony need to send a sync message with a delivery receipt.
     if ([thread isKindOfClass:[TSContactThread class]] &&
-        [((TSContactThread *)thread).contactIdentifier isEqualToString:[TSAccountManager localNumber]]) {
+        [((TSContactThread *)thread).contactIdentifier isEqualToString:self.tsAccountManager.localNumber]) {
         // Send to self.
         OWSAssertDebug(message.recipientIds.count == 1);
-        [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-            for (NSString *recipientId in message.sendingRecipientIds) {
-                [message updateWithReadRecipientId:recipientId
-                                     readTimestamp:message.timestampForSorting
-                                       transaction:transaction];
-            }
-        }];
+        // Don't mark self-sent messages as read (or sent) until the sync transcript is sent.
         successHandler();
         return;
     }
@@ -864,7 +829,18 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     @try {
         deviceMessages = [self throws_deviceMessagesForMessageSend:messageSend];
     } @catch (NSException *exception) {
-        if ([exception.name isEqualToString:UntrustedIdentityKeyException]) {
+        if ([exception.name isEqualToString:NoSessionForTransientMessageException]) {
+            // When users re-register, we don't want transient messages (like typing
+            // indicators) to cause users to hit the prekey fetch rate limit.  So
+            // we silently discard these message if there is no pre-existing session
+            // for the recipient.
+            NSError *error = OWSErrorWithCodeDescription(
+                OWSErrorCodeNoSessionForTransientMessage, @"No session for transient message.");
+            [error setIsRetryable:NO];
+            [error setIsFatal:YES];
+            *errorHandle = error;
+            return nil;
+        } else if ([exception.name isEqualToString:UntrustedIdentityKeyException]) {
             // This *can* happen under normal usage, but it should happen relatively rarely.
             // We expect it to happen whenever Bob reinstalls, and Alice messages Bob before
             // she can pull down his latest identity.
@@ -1245,11 +1221,12 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     void (^handle404)(void) = ^{
         OWSLogWarn(@"Unregistered recipient: %@", recipient.uniqueId);
 
-        TSThread *_Nullable thread = messageSend.thread;
-        OWSAssertDebug(thread);
-
         dispatch_async([OWSDispatch sendingQueue], ^{
-            [self unregisteredRecipient:recipient message:message thread:thread];
+            if (![messageSend.message isKindOfClass:[OWSOutgoingSyncMessage class]]) {
+                TSThread *_Nullable thread = messageSend.thread;
+                OWSAssertDebug(thread);
+                [self unregisteredRecipient:recipient message:message thread:thread];
+            }
 
             NSError *error = OWSErrorMakeNoSuchSignalRecipientError();
             // No need to retry if the recipient is not registered.
@@ -1351,7 +1328,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     NSArray *missingDevices = responseJson[@"missingDevices"];
 
     if (missingDevices.count > 0) {
-        NSString *localNumber = [TSAccountManager localNumber];
+        NSString *localNumber = self.tsAccountManager.localNumber;
         if ([localNumber isEqualToString:recipient.uniqueId]) {
             [OWSDeviceManager.sharedManager setMayHaveLinkedDevices];
         }
@@ -1383,9 +1360,27 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 }
 
 - (void)handleMessageSentLocally:(TSOutgoingMessage *)message
-                         success:(void (^)(void))success
+                         success:(void (^)(void))successParam
                          failure:(RetryableFailureHandler)failure
 {
+    dispatch_block_t success = ^{
+        TSThread *_Nullable thread = message.thread;
+        if (thread && [thread isKindOfClass:[TSContactThread class]] &&
+            [thread.contactIdentifier isEqualToString:self.tsAccountManager.localNumber]) {
+            OWSAssertDebug(message.recipientIds.count == 1);
+            // Don't mark self-sent messages as read (or sent) until the sync transcript is sent.
+            [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
+                for (NSString *recipientId in message.sendingRecipientIds) {
+                    [message updateWithReadRecipientId:recipientId
+                                         readTimestamp:message.timestamp
+                                           transaction:transaction];
+                }
+            }];
+        }
+
+        successParam();
+    };
+
     [self.dbConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
         [[OWSDisappearingMessagesJob sharedJob] startAnyExpirationForMessage:message
                                                          expirationStartedAt:[NSDate ows_millisecondTimeStamp]
@@ -1535,6 +1530,11 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     }];
     if (hasSession) {
         return;
+    }
+    // Discard "typing indicator" messages if there is no existing session with the user.
+    BOOL canSafelyBeDiscarded = messageSend.message.isOnline;
+    if (canSafelyBeDiscarded) {
+        OWSRaiseException(NoSessionForTransientMessageException, @"No session for transient message.");
     }
 
     __block dispatch_semaphore_t sema = dispatch_semaphore_create(0);
@@ -1756,11 +1756,13 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
         // TODO: Why is this necessary?
         [message save];
     } else if (message.groupMetaMessage == TSGroupMetaMessageQuit) {
+        // MJK TODO - remove senderTimestamp
         [[[TSInfoMessage alloc] initWithTimestamp:message.timestamp
                                          inThread:thread
                                       messageType:TSInfoMessageTypeGroupQuit
                                     customMessage:message.customMessage] save];
     } else {
+        // MJK TODO - remove senderTimestamp
         [[[TSInfoMessage alloc] initWithTimestamp:message.timestamp
                                          inThread:thread
                                       messageType:TSInfoMessageTypeGroupUpdate
@@ -1805,22 +1807,45 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
 #pragma mark -
 
-+ (void)prepareMessageForSending:(TSOutgoingMessage *)message
-      quotedThumbnailAttachments:(NSArray<TSAttachmentStream *> **)outQuotedThumbnailAttachments
-    contactShareAvatarAttachment:(TSAttachmentStream *_Nullable *)outContactShareAvatarAttachment
-                     transaction:(YapDatabaseReadWriteTransaction *)transaction
++ (NSArray<NSString *> *)prepareMessageForSending:(TSOutgoingMessage *)message
+                                      transaction:(YapDatabaseReadWriteTransaction *)transaction
 {
+    OWSAssertDebug(message);
+    OWSAssertDebug(transaction);
+
+    NSMutableArray<NSString *> *attachmentIds = [NSMutableArray new];
+
+    if (message.attachmentIds) {
+        [attachmentIds addObjectsFromArray:message.attachmentIds];
+    }
+
     if (message.quotedMessage) {
-        *outQuotedThumbnailAttachments =
+        // Though we currently only ever expect at most one thumbnail, the proto data model
+        // suggests this could change. The logic is intended to work with multiple, but
+        // if we ever actually want to send multiple, we should do more testing.
+        NSArray<TSAttachmentStream *> *quotedThumbnailAttachments =
             [message.quotedMessage createThumbnailAttachmentsIfNecessaryWithTransaction:transaction];
+        for (TSAttachmentStream *attachment in quotedThumbnailAttachments) {
+            [attachmentIds addObject:attachment.uniqueId];
+        }
     }
 
     if (message.contactShare.avatarAttachmentId != nil) {
-        TSAttachment *avatarAttachment = [message.contactShare avatarAttachmentWithTransaction:transaction];
-        if ([avatarAttachment isKindOfClass:[TSAttachmentStream class]]) {
-            *outContactShareAvatarAttachment = (TSAttachmentStream *)avatarAttachment;
+        TSAttachment *attachment = [message.contactShare avatarAttachmentWithTransaction:transaction];
+        if ([attachment isKindOfClass:[TSAttachmentStream class]]) {
+            [attachmentIds addObject:attachment.uniqueId];
         } else {
-            OWSFailDebug(@"unexpected avatarAttachment: %@", avatarAttachment);
+            OWSFailDebug(@"unexpected avatarAttachment: %@", attachment);
+        }
+    }
+
+    if (message.linkPreview.imageAttachmentId != nil) {
+        TSAttachment *attachment =
+            [TSAttachment fetchObjectWithUniqueID:message.linkPreview.imageAttachmentId transaction:transaction];
+        if ([attachment isKindOfClass:[TSAttachmentStream class]]) {
+            [attachmentIds addObject:attachment.uniqueId];
+        } else {
+            OWSFailDebug(@"unexpected attachment: %@", attachment);
         }
     }
 
@@ -1828,6 +1853,8 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     [message saveWithTransaction:transaction];
     // When we start a message send, all "failed" recipients should be marked as "sending".
     [message updateWithMarkingAllUnsentRecipientsAsSendingWithTransaction:transaction];
+
+    return attachmentIds;
 }
 
 + (void)prepareAttachments:(NSArray<OWSOutgoingAttachmentInfo *> *)attachmentInfos
